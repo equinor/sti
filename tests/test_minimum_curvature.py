@@ -62,6 +62,29 @@ class TestMinCurveSegment:
         assert segment.dnorth == approx(0)
         assert segment.deast == approx(234)
         assert segment.dtvd == approx(0)
+    
+    def test_straight_west(self):
+        azi = 3 / 4 * 2 * np.pi 
+        inc = np.pi / 2
+        upper_data = {
+            'inc' : inc,
+            'azi' : azi,
+            'md_inc'  : 0,
+        }
+        upper = mc.SurveyPoint(**upper_data)
+
+        lower_data = {
+            'inc' : inc,
+            'azi' :  azi,
+            'md_inc'  : 544,
+        }
+        lower = mc.SurveyPoint(**lower_data)
+
+        segment = mc.getMinCurveSegment(upper, lower)
+
+        assert segment.dnorth == approx(0)
+        assert segment.deast == approx(-544)
+        assert segment.dtvd == approx(0)
 
     def test_straight_north(self):
         azi = 0
@@ -115,3 +138,31 @@ class TestMinCurveSegment:
         assert segment.deast == approx(radius)
         assert segment.dtvd == approx(radius)
 
+    def circle_upward_east(self):
+        azi = np.pi / 2
+        inc = 0
+        upper_data = {
+            'inc' : inc,
+            'azi' : azi,
+            'md_inc'  : 0,
+        }
+        upper = mc.SurveyPoint(**upper_data)
+
+
+        azi = np.pi / 2
+        inc = -np.pi / 2
+        md_inc = 500
+        lower_data = {
+            'inc' : inc,
+            'azi' :  azi,
+            'md_inc'  : md_inc,
+        }
+        lower = mc.SurveyPoint(**lower_data)
+
+        segment = mc.getMinCurveSegment(upper, lower)
+
+        radius = 2*md_inc/np.pi
+
+        assert segment.dnorth == approx(0)
+        assert segment.deast == approx(radius)
+        assert segment.dtvd == approx(-radius)
