@@ -12,6 +12,37 @@ class MinCurveSegment(BaseModel):
     dtvd: float
     dls: confloat(ge=0)
 
+def __getMinCurveSegmentInner(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
+    """Inner workhorse, designed for auto differentiability."""
+    # Stolen from wellpathpy
+    cos_inc = np.cos(inc_lower - inc_upper)
+    sin_inc = np.sin(inc_upper) * np.sin(inc_lower)
+    cos_azi = 1 - np.cos(azi_lower - azi_upper)
+
+    dogleg = np.arccos(cos_inc - (sin_inc * cos_azi))
+    md_inc = md_inc
+
+    # ratio factor, correct for dogleg == 0 values
+    if np.isclose(dogleg, 0.):
+        rf = 1
+    else:
+        rf = 2 / dogleg * np.tan(dogleg / 2)
+    
+    # delta northing
+    upper = np.sin(inc_upper) * np.cos(azi_upper)
+    lower = np.sin(inc_lower) * np.cos(azi_lower)
+    dnorth = md_inc / 2 * (upper + lower) * rf
+    
+    # delta easting
+    upper = np.sin(inc_upper) * np.sin(azi_upper)
+    lower = np.sin(inc_lower) * np.sin(azi_lower)
+    deast = md_inc / 2 * (upper + lower) * rf
+
+    # delta tvd
+    dtvd = md_inc / 2 * (np.cos(inc_upper) + np.cos(inc_lower)) *rf
+
+    return dnorth, deast, dtvd, dogleg
+    
 def getMinCurveSegment(upperSurvey: SurveyPoint, lowerSurvey: SurveyPoint):
     """Calculate increments in TVD, northing, easting and associated dogleg
     using the minimum curvature method.
@@ -27,31 +58,7 @@ def getMinCurveSegment(upperSurvey: SurveyPoint, lowerSurvey: SurveyPoint):
     -------
     minCurveSegment: MinCurveSegment
     """
-    # Stolen from wellpathpy
-    cos_inc = np.cos(lowerSurvey.inc - upperSurvey.inc)
-    sin_inc = np.sin(upperSurvey.inc) * np.sin(lowerSurvey.inc)
-    cos_azi = 1 - np.cos(lowerSurvey.azi - upperSurvey.azi)
-
-    dogleg = np.arccos(cos_inc - (sin_inc * cos_azi))
-    md_inc = lowerSurvey.md_inc
-
-    # ratio factor, correct for dogleg == 0 values
-    with np.errstate(divide = 'ignore', invalid = 'ignore'):
-        rf = 2 / dogleg * np.tan(dogleg / 2)
-        rf = np.where(dogleg == 0., 1, rf)
-    
-    # delta northing
-    upper = np.sin(upperSurvey.inc) * np.cos(upperSurvey.azi)
-    lower = np.sin(lowerSurvey.inc) * np.cos(lowerSurvey.azi)
-    dnorth = md_inc / 2 * (upper + lower) * rf
-    
-    # delta easting
-    upper = np.sin(upperSurvey.inc) * np.sin(upperSurvey.azi)
-    lower = np.sin(lowerSurvey.inc) * np.sin(lowerSurvey.azi)
-    deast = md_inc / 2 * (upper + lower) * rf
-
-    # delta tvd
-    dtvd = md_inc / 2 * (np.cos(upperSurvey.inc) + np.cos(lowerSurvey.inc)) *rf
+    dnorth, deast, dtvd, dogleg = __getMinCurveSegmentInner(upperSurvey.inc, upperSurvey.azi, lowerSurvey.inc, lowerSurvey.azi, lowerSurvey.md_inc)
 
     minCurveSegment = MinCurveSegment(dnorth=dnorth, deast=deast, dtvd = dtvd, dls=dogleg)
 
