@@ -1,8 +1,18 @@
-from pytest import approx
+import pytest
 import sti.minimum_curvature as mc
 import numpy as np
+from pydantic import ValidationError
 
 class TestMinCurveSegment:
+    def test_no_negative_md_inc(self):
+        data = {
+            'inc' : 0,
+            'azi' : 0,
+            'md_inc' : -10
+        }
+        with pytest.raises(ValidationError):
+            point = mc.SurveyPoint(**data)
+
     def test_zero_md_inc(self):
         upper_data = {
             'inc' : 0,
@@ -58,9 +68,9 @@ class TestMinCurveSegment:
 
         segment = mc.getMinCurveSegment(upper, lower)
 
-        assert segment.dnorth == approx(0)
-        assert segment.deast == approx(234)
-        assert segment.dtvd == approx(0)
+        assert segment.dnorth == pytest.approx(0)
+        assert segment.deast == pytest.approx(234)
+        assert segment.dtvd == pytest.approx(0)
     
     def test_straight_west(self):
         azi = 3 / 4 * 2 * np.pi 
@@ -81,9 +91,9 @@ class TestMinCurveSegment:
 
         segment = mc.getMinCurveSegment(upper, lower)
 
-        assert segment.dnorth == approx(0)
-        assert segment.deast == approx(-544)
-        assert segment.dtvd == approx(0)
+        assert segment.dnorth == pytest.approx(0)
+        assert segment.deast == pytest.approx(-544)
+        assert segment.dtvd == pytest.approx(0)
 
     def test_straight_north(self):
         azi = 0
@@ -104,9 +114,9 @@ class TestMinCurveSegment:
 
         segment = mc.getMinCurveSegment(upper, lower)
 
-        assert segment.dnorth == approx(578)
-        assert segment.deast == approx(0)
-        assert segment.dtvd == approx(0)
+        assert segment.dnorth == pytest.approx(578)
+        assert segment.deast == pytest.approx(0)
+        assert segment.dtvd == pytest.approx(0)
 
     def test_circle_downward_east(self):
         azi = np.pi / 2
@@ -133,9 +143,9 @@ class TestMinCurveSegment:
 
         radius = 2*md_inc/np.pi
 
-        assert segment.dnorth == approx(0)
-        assert segment.deast == approx(radius)
-        assert segment.dtvd == approx(radius)
+        assert segment.dnorth == pytest.approx(0)
+        assert segment.deast == pytest.approx(radius)
+        assert segment.dtvd == pytest.approx(radius)
 
     def test_circle_upward_east(self):
         azi = np.pi / 2
@@ -162,6 +172,6 @@ class TestMinCurveSegment:
 
         radius = 2*md_inc/np.pi
 
-        assert segment.dnorth == approx(0)
-        assert segment.deast == approx(radius)
-        assert segment.dtvd == approx(-radius)
+        assert segment.dnorth == pytest.approx(0)
+        assert segment.deast == pytest.approx(radius)
+        assert segment.dtvd == pytest.approx(-radius)

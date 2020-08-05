@@ -1,16 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, confloat
 import numpy as np
 
 class SurveyPoint(BaseModel):
-    inc: float
-    azi: float
-    md_inc: float
+    inc: confloat(ge=0, le=np.pi)
+    azi: confloat(ge=0, le=2*np.pi)
+    md_inc: confloat(ge=0)
 
 class MinCurveSegment(BaseModel):
     dnorth: float
     deast: float
     dtvd: float
-    dls: float
+    dls: confloat(ge=0)
 
 def getMinCurveSegment(upperSurvey: SurveyPoint, lowerSurvey: SurveyPoint):
     """Calculate increments in TVD, northing, easting and associated dogleg
