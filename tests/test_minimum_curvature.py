@@ -39,7 +39,6 @@ class TestMinCurveSegment:
         assert segment.deast == 0
         assert segment.dtvd == 123
 
-
     def test_straight_east(self):
         azi = np.pi / 2
         inc = np.pi / 2
@@ -109,7 +108,7 @@ class TestMinCurveSegment:
         assert segment.deast == approx(0)
         assert segment.dtvd == approx(0)
 
-    def circle_downward_east(self):
+    def test_circle_downward_east(self):
         azi = np.pi / 2
         inc = 0
         upper_data = {
@@ -138,9 +137,9 @@ class TestMinCurveSegment:
         assert segment.deast == approx(radius)
         assert segment.dtvd == approx(radius)
 
-    def circle_upward_east(self):
+    def test_circle_upward_east(self):
         azi = np.pi / 2
-        inc = 0
+        inc = np.pi / 2
         upper_data = {
             'inc' : inc,
             'azi' : azi,
@@ -150,7 +149,7 @@ class TestMinCurveSegment:
 
 
         azi = np.pi / 2
-        inc = -np.pi / 2
+        inc = np.pi 
         md_inc = 500
         lower_data = {
             'inc' : inc,
