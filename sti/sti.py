@@ -73,18 +73,12 @@ class Sti:
         # Fit parameters with optimization
         self.__fit_legs()
 
-    def __truncate_to_bounds(self, arr):
+    def __truncate_to_bounds(self, arr, eps=0):
         # Truncate small negative violations from scipy optimize
-        # val = np.maximum(arr, self.lower_bound)
-        # val = np.minimum(val, self.upper_bound)
+        # eps is a workaround for https://github.com/scipy/scipy/issues/11403
+        val = np.maximum(arr, self.lower_bound + eps)
+        val = np.minimum(val, self.upper_bound - eps)
 
-        # Debug - dead slow stuf...
-        val = arr
-        for i in range(0, len(val)):
-            if val[i] <= self.lower_bound[i]:
-                val[i] = self.lower_bound[i] + 1e-3
-            if val[i] >= self.upper_bound[i]:
-                val[i] = self.upper_bound[i] - 1e-3
             
         return val
 
@@ -104,7 +98,7 @@ class Sti:
             """ Method used to find an initial feasible guess with less focus on length"""
             
             # Scale factor applied to MD to make it less important in the iteations
-            MD_WEIGHT = 1/100000
+            MD_WEIGHT = 1/10000
 
             # Project current values
             self.__set_legs_from_array(arr)
@@ -181,11 +175,10 @@ class Sti:
             feasible = False
         
         # Use results from feasibility evalution when getting the non-linear constraint
-        nlc = self.__get_nlc(keep_feasible=False)
+        nlc = self.__get_nlc(keep_feasible=feasible)
 
-        # Use previous result to try to shorten well 
-        x0 = result.x
-
+        # Use previous result to try to shorten well, include eps to fix bug https://github.com/scipy/scipy/issues/11403
+        x0 = self.__truncate_to_bounds(result.x, eps=1e-2)
         result = minimize(objective_min_md, x0, bounds=bounds, method='trust-constr', constraints=nlc, options={'verbose': 1})
 
         print("\nFINAL ESTIMATE ")
