@@ -3,6 +3,7 @@ from minimum_curvature import SurveyPoint, MinCurveSegment, getMinCurveSegment
 import numpy as np
 from scipy.optimize import minimize, Bounds, NonlinearConstraint
 from scipy.optimize import differential_evolution
+from random import random
 
 class State(BaseModel):
     north: float
@@ -178,7 +179,7 @@ class Sti:
         nlc = self.__get_nlc(keep_feasible=feasible)
 
         # Use previous result to try to shorten well, include eps to fix bug https://github.com/scipy/scipy/issues/11403
-        x0 = self.__truncate_to_bounds(result.x, eps=1e-2)
+        x0 = self.__truncate_to_bounds(result.x, eps=1e-1)
         result = minimize(objective_min_md, x0, bounds=bounds, method='trust-constr', constraints=nlc, options={'verbose': 1})
 
         print("\nFINAL ESTIMATE ")
@@ -243,23 +244,28 @@ class Sti:
         print("Mismatch: ", self.mismatch, " tol: ", self.tol)
 
 if __name__ == '__main__':
-    start_data = {
-        'north': 0,
-        'east' : 0,
-        'tvd': 0,
-        'inc': 0,
-        'azi': 0 
-    }
+    n_runs = 10
+    for i in range(0, n_runs):
+        print("RUN no. ",i)
+        start_data = {
+            'north': 0,
+            'east' : 0,
+            'tvd': 0,
+            'inc': random()*np.pi,
+            'azi':  random()*2*np.pi
+        }
 
-    end_data = {
-        'north': 0,
-        'east' : 0,
-        'tvd':  2500,
-        'inc': np.pi/2,
-        'azi': np.pi/4 
-    }
+        end_data = {
+            'north': random()*2500,
+            'east' : random()*2500,
+            'tvd':  random()*2500,
+            'inc': random()*np.pi,
+            'azi': random()*2*np.pi 
+        }
 
-    start = State(**start_data)
-    end = State(**end_data)
-    w  = Sti(start, end)
+        start = State(**start_data)
+        end = State(**end_data)
+        print(start_data)
+        print(end_data)
+        w  = Sti(start, end)
 
