@@ -2,8 +2,8 @@ from pydantic import BaseModel, confloat
 import numpy as np
 
 class SurveyPoint(BaseModel):
-    inc: confloat(ge=0, le=np.pi)
-    azi: confloat(ge=0, le=2*np.pi)
+    inc: confloat(ge=-1e-3, le=np.pi+1e-3)
+    azi: confloat(ge=-1e-3, le=2*np.pi+1e-3)
     md_inc: confloat(ge=0)
 
 class MinCurveSegment(BaseModel):
@@ -20,10 +20,10 @@ def __getMinCurveSegmentInner(inc_upper, azi_upper, inc_lower, azi_lower, md_inc
     cos_azi = 1 - np.cos(azi_lower - azi_upper)
 
     dogleg = np.arccos(cos_inc - (sin_inc * cos_azi))
-    md_inc = md_inc
 
     # ratio factor, correct for dogleg == 0 values
     if np.isclose(dogleg, 0.):
+        dogleg = 0
         rf = 1
     else:
         rf = 2 / dogleg * np.tan(dogleg / 2)
@@ -41,7 +41,9 @@ def __getMinCurveSegmentInner(inc_upper, azi_upper, inc_lower, azi_lower, md_inc
     # delta tvd
     dtvd = md_inc / 2 * (np.cos(inc_upper) + np.cos(inc_lower)) *rf
 
-    return dnorth, deast, dtvd, dogleg
+    dls = dogleg / md_inc
+
+    return dnorth, deast, dtvd, dls
     
 def getMinCurveSegment(upperSurvey: SurveyPoint, lowerSurvey: SurveyPoint):
     """Calculate increments in TVD, northing, easting and associated dogleg
@@ -58,8 +60,8 @@ def getMinCurveSegment(upperSurvey: SurveyPoint, lowerSurvey: SurveyPoint):
     -------
     minCurveSegment: MinCurveSegment
     """
-    dnorth, deast, dtvd, dogleg = __getMinCurveSegmentInner(upperSurvey.inc, upperSurvey.azi, lowerSurvey.inc, lowerSurvey.azi, lowerSurvey.md_inc)
+    dnorth, deast, dtvd, dls = __getMinCurveSegmentInner(upperSurvey.inc, upperSurvey.azi, lowerSurvey.inc, lowerSurvey.azi, lowerSurvey.md_inc)
 
-    minCurveSegment = MinCurveSegment(dnorth=dnorth, deast=deast, dtvd = dtvd, dls=dogleg)
+    minCurveSegment = MinCurveSegment(dnorth=dnorth, deast=deast, dtvd = dtvd, dls=dls)
 
     return minCurveSegment
