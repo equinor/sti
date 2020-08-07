@@ -66,6 +66,7 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
 
     return sti, err
 
+
 def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_slot, n_fully_random):
     """ Produce training data for fitting a neural net model."""
 
@@ -112,6 +113,7 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
             writer = csv.writer(file)
             writer.writerow(data)
 
+
 def __merge_training_data(start_state, target_state, dls_limit, sti):
     data = []
     data.extend(start_state)
@@ -146,6 +148,8 @@ def __get_header():
     ]
 
     return header
+
+
 def __merge_info(start_state, target_state, dls_limit, sti):
     merged = np.array()
     merged.append(start_state)
@@ -156,6 +160,7 @@ def __merge_info(start_state, target_state, dls_limit, sti):
     merged.flatten()
 
     return merged
+
 
 def __inital_guess(state_from, state_to):
     dnorth = state_to[0] - state_from[0]
@@ -184,8 +189,8 @@ def __inital_guess(state_from, state_to):
 
     x0 = np.array([inc_m/2, inc_m, inc_t, azi_m/2, azi_m, azi_t, r/3, r/3, r/3])
 
-
     return x0 
+
 
 def print_state(state):
     print("North: ", "{:.2f}".format(state[0]))
@@ -193,6 +198,7 @@ def print_state(state):
     print("TVD  : ", "{:.2f}".format(state[2]))
     print("Inc. : ", "{:.4f}".format(state[3]))
     print("Azi. : ", "{:.4f}".format(state[4]))
+
 
 def print_sti(start_state, target_state, sti, dls_limit):
     print("Start state: ")
@@ -217,7 +223,6 @@ def print_sti(start_state, target_state, sti, dls_limit):
     print("Leg 1, inc: ", "{:.4f}".format(sti[0]), " azi: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
     print("Leg 2, inc: ", "{:.4f}".format(sti[1]), " azi: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
     print("Leg 3, inc: ", "{:.4f}".format(sti[2]), " azi: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
-
 
 
 def __truncate_to_bounds(sti, lb, ub, eps=0):
@@ -253,6 +258,7 @@ def __project(start_state, sti):
 
     return (p_north, p_east, p_tvd, p_inc, p_azi), dls
 
+
 def __err_squared_pos_mismatch(state1, state2, scale_md):
     """ Error in bit position with consideration for orientation. """
     d2north = (state1[0] - state2[0])**2 
@@ -263,6 +269,7 @@ def __err_squared_pos_mismatch(state1, state2, scale_md):
 
     return terr
 
+
 def __err_squared_orient_mismatch(state1, state2, dls_limit):
     """ Error in bit orientation. """
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
@@ -272,12 +279,14 @@ def __err_squared_orient_mismatch(state1, state2, dls_limit):
 
     return terr
 
+
 def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
     """ Calculate a scaled L2 mismatch"""
     perr = __err_squared_pos_mismatch(state1, state2, scale_md)
     oerr = __err_squared_orient_mismatch(state1, state2, dls_limit)
 
     return perr + oerr
+
 
 def __err_dls_mse(start_state, sti, dls_limit, scale_md):
     """ Return the sum of squares of dls above the dls_limit scaled by dls_limit"""
@@ -286,6 +295,7 @@ def __err_dls_mse(start_state, sti, dls_limit, scale_md):
     dls_mis = dls_mis ** 2
 
     return sum(dls_mis)
+
 
 def __err_tot_md_sq(sti, scale_md):
     md = (sti[6] + sti[7] + sti[8]) / scale_md
@@ -311,6 +321,7 @@ def __get_optifuns_min_length(scale_md):
         return __err_tot_md_sq(sti, scale_md)
     
     return of_len
+
 
 def __get_non_linear_constraint(start_state, target_state, dls_limit, scale_md, tol, keep_feasible=False):
     def nlc_fun(sti):
@@ -341,6 +352,7 @@ def __get_sti_bounds():
     assert(len(lb) == 9)
 
     return lb, ub
+
 
 def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
     """Inner workhorse, designed for auto differentiability."""
@@ -374,6 +386,7 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
     dls = dogleg / md_inc
 
     return dnorth, deast, dtvd, dls
+
 
 if __name__ == '__main__':
     create_training_data(5, 4, 1, 1, 1)
