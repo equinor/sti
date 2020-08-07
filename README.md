@@ -9,6 +9,7 @@ Sti approximates an optimal solution to this problem by provding a a triplet of 
 The name comes from the Norwegian word "sti", which translates into "trail" or "path" in English."
 
 # Usage
+sti is in very early development, and a user centric Python API is not yet available
 
 # Precision mode
 When in precision mode, sti will use optimization to solve the planning problem. The method works as follows:
