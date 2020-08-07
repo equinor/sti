@@ -196,7 +196,7 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         print_header("Fully random - but KO at (0,0,0)")
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, random()*np.pi, random()*2*np.pi]
-        target_state = [-4000+random()*8000, -4000+random()*8000, -4000+random()*8000, np.pi/2, random()*2*np.pi]
+        target_state = [-4000+random()*8000, -4000+random()*8000, -4000+random()*8000, random()*np.pi/2, random()*2*np.pi]
 
         sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
         print_sti(start_state, target_state, sti, dls_limit)
@@ -541,7 +541,7 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    create_training_data(0, 0, 0, 0, 1000)
+    create_training_data(0, 0, 0, 0, 10000)
     end_time = datetime.now()
     delta = end_time - start_time
     print("Elapsed walltime:")

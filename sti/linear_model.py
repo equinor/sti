@@ -21,7 +21,7 @@ X = df.iloc[:, 0:10].values
 y = df.iloc[:,11:].values
 
 # Create training and test sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state=42)
 
 # Create the regressor: reg_all
 # model = LinearRegression()
@@ -39,7 +39,7 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("Root Mean Squared Error: {}".format(rmse))
 
 # Compare some predictions
-tests = (12, 24, 53, 69, 90, 103, 120, 153,)
+# tests = (12, 24, 53, 69, 90, 103, 120, 153,)
 
 # for i in tests:
 #     from_state = np.array(df.iloc[i, 0:5])
