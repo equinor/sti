@@ -1,8 +1,14 @@
 import numpy as np
-import csv
 from scipy.optimize import minimize, Bounds, dual_annealing#, NonlinearConstraint
 from random import random
+
+# Storing data and profiling
 from datetime import datetime
+import csv
+
+# For loading a linear model for guessworking
+import pickle
+from sklearn.linear_model import LinearRegression
 
 """
 Given a start and end state in a space of (north, east, tvd, inc, azi),
@@ -233,33 +239,44 @@ def __merge_info(start_state, target_state, dls_limit, sti):
     return merged
 
 
-def __inital_guess(state_from, state_to):
-    """ Pure black magic. """
-    dnorth = state_to[0] - state_from[0]
-    deast = state_to[1] - state_from[1]
-    dtvd = state_to[2] - state_from[2]
+def __inital_guess(state_from, state_to, pickled_lm_file='linear-mod.sav'):
+    """ Produce an inital guess. Will try to use a linear model if available."""
 
-    r = (dnorth**2 + deast**2 + dtvd**2)**(0.5)
+    # TODO Should keep the model in memory between runs. Refactor me.
+    if pickled_lm_file is not None:
+        # Try first using a linear model from previous runs
+        print("Using linear model to initialize optimization.")
+        reg_mod = pickle.load(open(pickled_lm_file, 'rb'))
+        reg_x = np.append(state_from, state_to).flatten()
+        reg_sti = reg_mod.predict(reg_x.reshape(1, -1)).flatten()
+        x0 = reg_sti
+    else:
+        # We'll need to guess, pure black magic...
+        dnorth = state_to[0] - state_from[0]
+        deast = state_to[1] - state_from[1]
+        dtvd = state_to[2] - state_from[2]
 
-    inc_f = state_from[3]
-    inc_t = state_to[3]
-    azi_f = state_from[4]
-    azi_t = state_to[4]
+        r = (dnorth**2 + deast**2 + dtvd**2)**(0.5)
 
-    azi_m = azi_t 
+        inc_f = state_from[3]
+        inc_t = state_to[3]
+        azi_f = state_from[4]
+        azi_t = state_to[4]
 
-    if deast !=0 and dnorth ==0:
-        if deast > 0:
-            azi_m = np.pi /2
-        else:
-            azi_m = 2*np.pi*3/4
-    
-    inc_m = np.arccos(dtvd / r)
+        azi_m = azi_t 
 
-    if dnorth != 0:
-        azi_m = np.arctan(deast/dnorth)
+        if deast !=0 and dnorth ==0:
+            if deast > 0:
+                azi_m = np.pi /2
+            else:
+                azi_m = 2*np.pi*3/4
+        
+        inc_m = np.arccos(dtvd / r)
 
-    x0 = np.array([inc_m/2, inc_m, inc_t, azi_m/2, azi_m, azi_t, r/3, r/3, r/3])
+        if dnorth != 0:
+            azi_m = np.arctan(deast/dnorth)
+
+        x0 = np.array([inc_m/2, inc_m, inc_t, azi_m/2, azi_m, azi_t, r/3, r/3, r/3])
 
     return x0 
 
@@ -505,4 +522,9 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
 
 
 if __name__ == '__main__':
-    create_training_data(0, 0, 5, 5, 5)
+    start_time = datetime.now()
+    create_training_data(50, 100, 100, 100, 100)
+    end_time = datetime.now()
+    delta = end_time - start_time
+    print("Elapsed walltime:")
+    print(delta)

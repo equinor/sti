@@ -7,15 +7,15 @@ import faststi
 import pickle
 
 # Data from optimization
-filename_data ='20200807-111925.csv'
+filename_data ='data.csv'
 
 # Store the final model here for use later
-filename_model = '20200807-111925.mod'
+filename_model = 'linear-mod.sav'
 
-df = pd.read_csv('20200807-111925.csv')
+df = pd.read_csv(filename_data)
 
 #Y: dependent variable vector
-X = df.iloc[:, 0:11].values
+X = df.iloc[:, 0:10].values
 y = df.iloc[:,11:].values
 
 # Create training and test sets
