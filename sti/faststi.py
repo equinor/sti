@@ -1,6 +1,6 @@
 import numpy as np
 import csv
-from scipy.optimize import minimize, Bounds, differential_evolution, NonlinearConstraint, dual_annealing
+from scipy.optimize import minimize, Bounds, dual_annealing#, NonlinearConstraint
 from random import random
 from datetime import datetime
 
@@ -19,8 +19,11 @@ State data is layed out as follows, again for effciency reasons:
 [north, east, tvd, inc, azi]
 """
 
-def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, md_weight=1/10000):
+def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, md_weight=1/1000):
     """ Fit a sti from start_state to target_state """
+    VERBOSE = True
+    # METHOD = 'L-BFGS-B'
+    METHOD = 'trust-constr'
 
     # Bounds
     lb, ub = __get_sti_bounds()
@@ -29,19 +32,38 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
     # Objective for first global optimization
     of_feas = __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight)
 
+    if VERBOSE:
+        print("\nInitializing. Attempting simple guess & local optimization.")
     # First attempt to fit with L-BFGS-B if the problem is simple.
     # Seems to work only for straight lines
     x0 = __inital_guess(start_state, target_state)
-    result = minimize(of_feas, x0, bounds=bounds, method='L-BFGS-B')#, options={'iprint': 0, 'ftol' : np.finfo(float).eps})
+    result = minimize(of_feas, x0, bounds=bounds, method=METHOD)#, options={'iprint': 0, 'ftol' : np.finfo(float).eps})
 
     sti = result.x
     projection, dls = __project(start_state, sti)
     err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
 
-    # TODO Add some logic here, and REFACTOR
+
+    # Try to precondition the problem by solving a simpler one
+    if(err > 0.1):
+        if VERBOSE:
+            print("Target not found. Attempting precondintioning.")
+        x0 = sti
+        of_precond = __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, md_weight)
+        result = minimize(of_precond, x0, bounds=bounds, method=METHOD) #, options={'iprint': 0})
+
+        # Input from precdond as initial guess for full constraint problem
+        x0 = result.x
+        result = minimize(of_feas, x0, bounds=bounds, method=METHOD) #, options={'iprint': 0, 'ftol' : np.finfo(float).eps})
+
+        sti = result.x
+
+        projection, dls = __project(start_state, sti)
+        err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
 
     if(err > 0.1):
-        print("Target not found. Proceeding to global optimization")
+        if VERBOSE:
+            print("Target not found. Proceeding to global optimization")
         bounds_list = list(zip(lb, ub))
 
         result = dual_annealing(of_feas, bounds_list)
@@ -49,6 +71,8 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
 
         projection, dls = __project(start_state, sti)
         err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
+        if VERBOSE:
+            print("ERR: ", err)
 
 
     # TODO 'trust-constr' method is broken when using numdiff in current scipy, below code will not work
@@ -163,6 +187,7 @@ def __merge_info(start_state, target_state, dls_limit, sti):
 
 
 def __inital_guess(state_from, state_to):
+    """ Pure black magic. """
     dnorth = state_to[0] - state_from[0]
     deast = state_to[1] - state_from[1]
     dtvd = state_to[2] - state_from[2]
@@ -223,6 +248,7 @@ def print_sti(start_state, target_state, sti, dls_limit):
     print("Leg 1, inc: ", "{:.4f}".format(sti[0]), " azi: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
     print("Leg 2, inc: ", "{:.4f}".format(sti[1]), " azi: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
     print("Leg 3, inc: ", "{:.4f}".format(sti[2]), " azi: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
+    print("--------------------------------------------------------------\n")
 
 
 def __truncate_to_bounds(sti, lb, ub, eps=0):
@@ -275,7 +301,7 @@ def __err_squared_orient_mismatch(state1, state2, dls_limit):
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
     d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
 
-    terr = d2azi + d2azi
+    terr = d2inc + d2azi
 
     return terr
 
@@ -301,6 +327,32 @@ def __err_tot_md_sq(sti, scale_md):
     md = (sti[6] + sti[7] + sti[8]) / scale_md
     return md**2
 
+
+def __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, md_weight):
+    """ Simpler objective function.
+
+        To be used as a preconditioner to find an initial guess before proceeding to global
+        optimization. Position is weighted more than orientation, length and dls.
+    """
+
+    def of_precondition(sti):
+        WEIGHT_POS = 1.0
+        WEIGHT_ORI = 0.0
+        WEIGHT_DLS = 0.1
+        WEIGHT_MD  = 0.0
+
+        projected_state, dls = __project(start_state, sti)
+
+        sq_pos_err = __err_squared_pos_mismatch(projected_state, target_state, scale_md)
+        sq_ori_err = __err_squared_orient_mismatch(projected_state, target_state, dls_limit)
+        sq_dls_err = __err_dls_mse(start_state, sti, dls_limit, scale_md)
+        sq_tot_md_err = __err_tot_md_sq(sti, scale_md)
+
+        terr = WEIGHT_POS*sq_pos_err + WEIGHT_ORI*sq_ori_err + WEIGHT_DLS*sq_dls_err + WEIGHT_MD*sq_tot_md_err
+
+        return terr
+
+    return of_precondition
 
 def __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight):
 
@@ -389,7 +441,7 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
 
 
 if __name__ == '__main__':
-    create_training_data(5, 4, 1, 1, 1)
+    create_training_data(5, 50, 1, 1, 1)
     # print("Step-out vertical problem")
     # start_state = [0, 0, 0, 0, 0]
     # target_state = [1000, 1000, 2000, 0, 0]
