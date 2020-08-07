@@ -22,8 +22,8 @@ State data is layed out as follows, again for effciency reasons:
 def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, md_weight=1/1000):
     """ Fit a sti from start_state to target_state """
     VERBOSE = True
-    # METHOD = 'L-BFGS-B'
-    METHOD = 'trust-constr'
+    METHOD = 'L-BFGS-B'
+    # METHOD = 'trust-constr'
 
     # Bounds
     lb, ub = __get_sti_bounds()
@@ -33,7 +33,11 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
     of_feas = __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight)
 
     if VERBOSE:
-        print("\nInitializing. Attempting simple guess & local optimization.")
+        print("\nInitializing problem.")
+        print("\nCurrent target:")
+        print("---------------------")
+        print_state(target_state)
+        print("\nAttempting simple guess & local optimization.")
     # First attempt to fit with L-BFGS-B if the problem is simple.
     # Seems to work only for straight lines
     x0 = __inital_guess(start_state, target_state)
@@ -96,6 +100,11 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
 
     filename = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = filename + ".csv"
+
+    def print_header(text):
+        print("\n\n#################################################################")
+        print(text)
+        print("#################################################################") 
     
     with open(filename,'x') as file:
         headers = __get_header()
@@ -103,9 +112,9 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         writer.writerow(headers)
 
 
-    print("Straight down problem")
-    print("-------------------------------------------------------")
     for i in range(0,n_straight_down):
+        print_header("Straight down")
+
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, 0, 0]
         target_state = [0, 0, random()*2500, 0, 0]
@@ -120,12 +129,50 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
             writer = csv.writer(file)
             writer.writerow(data)
 
-    print("Step out to vertical problem")
-    print("-------------------------------------------------------")
     for i in range(0, n_step_outs_v):
+        print_header("Step out to vertical in N/E sector")
+
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, 0, 0]
         target_state = [random()*750, random()*750, 2000+random()*2000, 0, 0]
+
+        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
+        print_sti(start_state, target_state, sti, dls_limit)
+        print("State mismatch:", err)
+
+        data = __merge_training_data(start_state, target_state, dls_limit, sti)
+
+        with open(filename,'a') as file:
+            writer = csv.writer(file)
+            writer.writerow(data)
+
+    for i in range(0, n_step_outs_h):
+        print_header("Step out to horizontal in N/E sector")
+        dls_limit = random()*0.003 + 0.0015
+        start_state = [0, 0, 0, 0, 0]
+
+        north = 1000+random()*2000
+        east = 1000+random()*2000
+        tvd = 2000+random()*2000
+
+        azi = np.arctan(east/north)
+        target_state = [north, east, tvd, np.pi/2, azi]
+
+        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
+        print_sti(start_state, target_state, sti, dls_limit)
+        print("State mismatch:", err)
+
+        data = __merge_training_data(start_state, target_state, dls_limit, sti)
+
+        with open(filename,'a') as file:
+            writer = csv.writer(file)
+            writer.writerow(data)
+
+    for i in range(0, n_below_slot):
+        print_header("Horizontal below KO")
+        dls_limit = random()*0.003 + 0.0015
+        start_state = [0, 0, 0, 0, 0]
+        target_state = [0, 0, 2000+random()*2000, np.pi/2, random()*2*np.pi]
 
         sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
         print_sti(start_state, target_state, sti, dls_limit)
@@ -458,32 +505,4 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
 
 
 if __name__ == '__main__':
-    create_training_data(5, 50, 1, 1, 1)
-    # print("Step-out vertical problem")
-    # start_state = [0, 0, 0, 0, 0]
-    # target_state = [1000, 1000, 2000, 0, 0]
-    # sti = faststi(start_state, target_state)
-    # print_sti(start_state, target_state, sti)
-
-    # print("Step-out horizontal problem")
-    # start_state = [0, 0, 0, 0, 0]
-    # target_state = [1000, 1000, 1000, np.pi/2, 0]
-    # sti = faststi(start_state, target_state)
-    # print_sti(start_state, target_state, sti)
-
-    # print("Horizontal below KO problem")
-    # start_state = [0, 0, 0, 0, 0]
-    # target_state = [0, 0, 2000, np.pi/2, 0]
-    # sti = faststi(start_state, target_state)
-    # # print_sti(start_state, target_state, sti)
-
-
-    # n_runs = 0
-    # print("Random runs:")
-    # for i in range(0, n_runs):
-    #     print("RUN no. ",i)
-    #     start_state = [0, 0, 0, random()*np.pi, random()*2*np.pi]
-    #     target_state = [2500*random(), 2500*random(), 2500*random(), random()*np.pi, random()*2*np.pi]
-
-    #     sti = faststi(start_state, target_state)
-    #     print_sti(start_state, target_state, sti)
+    create_training_data(0, 0, 5, 5, 5)
