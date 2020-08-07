@@ -301,6 +301,8 @@ def __err_squared_orient_mismatch(state1, state2, dls_limit):
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
     d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
 
+    # TODO Azi distance so that 2*pi - eps is close to 0
+
     terr = d2inc + d2azi
 
     return terr
@@ -363,7 +365,18 @@ def __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, m
         sq_dls_err = __err_dls_mse(start_state, sti, dls_limit, scale_md)
         sq_tot_md_err = __err_tot_md_sq(sti, scale_md)
 
-        return sq_state_err + sq_dls_err + sq_tot_md_err * md_weight
+        # Additional term that penalizes solution that are much longer in md
+        # the the approximate distance from start to target.
+        # 
+        # This is to try to avoid very creative solutions by global optimisers
+
+        # Note, we use scale MD = 1 to compare directly with the sti total md
+        app_dist = (__err_squared_state_mismatch(start_state, projected_state, dls_limit=dls_limit, scale_md=1))**(0.5)
+        md = sti[6] + sti[7] + sti[8]
+
+        sq_dist_err = (max(md, 2*app_dist) - 2*app_dist)**2
+
+        return sq_state_err + sq_dls_err + sq_tot_md_err * md_weight + sq_dist_err
 
     return of_feasibility
 
