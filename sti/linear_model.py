@@ -3,9 +3,15 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
-from sti import faststi
+import faststi
+import pickle
 
 # Data from optimization
+filename_data ='20200807-111925.csv'
+
+# Store the final model here for use later
+filename_model = '20200807-111925.mod'
+
 df = pd.read_csv('20200807-111925.csv')
 
 #Y: dependent variable vector
@@ -30,7 +36,7 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("Root Mean Squared Error: {}".format(rmse))
 
 # Compare some predictions
-tests = (12, 24, 53, 69)
+tests = (12, 24, 53, 69, 90, 103, 120, 153,)
 
 for i in tests:
     from_state = np.array(df.iloc[i, 0:5])
@@ -45,4 +51,7 @@ for i in tests:
 
     print("\nFrom regression")
     faststi.print_sti(from_state, to_state, sti_pred, dls)
+
+# Store the model
+pickle.dump(reg_all, open(filename_model, 'wb'))
 
