@@ -301,8 +301,12 @@ def __err_squared_orient_mismatch(state1, state2, dls_limit):
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
     d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
 
-    # TODO Azi distance so that 2*pi - eps is close to 0
-
+    # If abs(dazi) > pi, dazi is not minimal. Correct it.
+    dazi = abs(state1[4] - state2[4])
+    if dazi > np.pi:
+        dazi = 2*np.pi - dazi
+        
+    d2azi = dazi**2 / (dls_limit**2)
     terr = d2inc + d2azi
 
     return terr
