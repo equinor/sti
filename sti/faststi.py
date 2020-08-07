@@ -253,20 +253,31 @@ def __project(start_state, sti):
 
     return (p_north, p_east, p_tvd, p_inc, p_azi), dls
 
-def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
-    """ Calculate a scaled L2 mismatch"""
-    # Again, very ugly, but hopefully fast and autodifferentiable
+def __err_squared_pos_mismatch(state1, state2, scale_md):
+    """ Error in bit position with consideration for orientation. """
     d2north = (state1[0] - state2[0])**2 
     d2east = (state1[1] - state2[1])**2
     d2tvd = (state1[2] - state2[2])**2
+
+    terr = (d2north + d2east + d2tvd) / (scale_md**2)
+
+    return terr
+
+def __err_squared_orient_mismatch(state1, state2, dls_limit):
+    """ Error in bit orientation. """
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
     d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
 
-    terr = (d2north + d2east + d2tvd) / (scale_md**2)
-    terr = terr + d2inc + d2azi
-    terr = terr
+    terr = d2azi + d2azi
 
     return terr
+
+def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
+    """ Calculate a scaled L2 mismatch"""
+    perr = __err_squared_pos_mismatch(state1, state2, scale_md)
+    oerr = __err_squared_orient_mismatch(state1, state2, dls_limit)
+
+    return perr + oerr
 
 def __err_dls_mse(start_state, sti, dls_limit, scale_md):
     """ Return the sum of squares of dls above the dls_limit scaled by dls_limit"""
