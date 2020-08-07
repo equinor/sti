@@ -8,7 +8,9 @@ import csv
 
 # For loading a linear model for guessworking
 import pickle
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.pipeline import Pipeline
 
 """
 Given a start and end state in a space of (north, east, tvd, inc, azi),
@@ -179,6 +181,22 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, 0, 0]
         target_state = [0, 0, 2000+random()*2000, np.pi/2, random()*2*np.pi]
+
+        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
+        print_sti(start_state, target_state, sti, dls_limit)
+        print("State mismatch:", err)
+
+        data = __merge_training_data(start_state, target_state, dls_limit, sti)
+
+        with open(filename,'a') as file:
+            writer = csv.writer(file)
+            writer.writerow(data)
+    
+    for i in range(0, n_fully_random):
+        print_header("Fully random - but KO at (0,0,0)")
+        dls_limit = random()*0.003 + 0.0015
+        start_state = [0, 0, 0, random()*np.pi, random()*2*np.pi]
+        target_state = [-4000+random()*8000, -4000+random()*8000, -4000+random()*8000, np.pi/2, random()*2*np.pi]
 
         sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
         print_sti(start_state, target_state, sti, dls_limit)
@@ -523,7 +541,7 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    create_training_data(50, 100, 100, 100, 100)
+    create_training_data(0, 0, 0, 0, 1000)
     end_time = datetime.now()
     delta = end_time - start_time
     print("Elapsed walltime:")
