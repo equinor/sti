@@ -1,12 +1,16 @@
-# TODO - Sti
-
+# TODO - sti
+- Update requirements and setup.py
 - Update tests
+- Add more test
+- Add low and high inclination limits 
 - Move linear model and data to separate folder
 - Refactor, move create training data to separate file
-- Improve linear_model code
+- Move model fitting over to separate repo to reduce dependencies
+- Improve linear_model code. Or just wait until enough data is available to build a deep nn?
 - Divert output from training to separate folder
 - Enhance loading of linear model from disk
 - Translate position in input for improved predictions when start is not at origo
+- Handle input that is outside of trained range by scaling position and dog leg limits
 - Wrap core function with user oriented Python API
 - Improve logging
 - Reset global search when misfit > threshold
