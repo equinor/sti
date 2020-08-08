@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error
-import faststi
+import sti.sti_core
 import pickle
 
 # Data from optimization
@@ -38,8 +38,8 @@ print("R^2: {}".format(model.score(X_test, y_test)))
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("Root Mean Squared Error: {}".format(rmse))
 
-# Compare some predictions
-# tests = (12, 24, 53, 69, 90, 103, 120, 153,)
+# # Compare some predictions
+# tests = range(1, 2500,5)
 
 # for i in tests:
 #     from_state = np.array(df.iloc[i, 0:5])

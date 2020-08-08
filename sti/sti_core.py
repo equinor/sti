@@ -368,7 +368,7 @@ def __project(start_state, sti):
 
 
 def __err_squared_pos_mismatch(state1, state2, scale_md):
-    """ Error in bit position with consideration for orientation. """
+    """ Error in bit position without consideration for orientation. """
     d2north = (state1[0] - state2[0])**2 
     d2east = (state1[1] - state2[1])**2
     d2tvd = (state1[2] - state2[2])**2
@@ -379,7 +379,7 @@ def __err_squared_pos_mismatch(state1, state2, scale_md):
 
 
 def __err_squared_orient_mismatch(state1, state2, dls_limit):
-    """ Error in bit orientation. """
+    """ Error in bit orientation without consideration for position. """
     d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
     d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
 
@@ -395,7 +395,7 @@ def __err_squared_orient_mismatch(state1, state2, dls_limit):
 
 
 def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
-    """ Calculate a scaled L2 mismatch"""
+    """ Error in position and orientation"""
     perr = __err_squared_pos_mismatch(state1, state2, scale_md)
     oerr = __err_squared_orient_mismatch(state1, state2, dls_limit)
 
@@ -403,7 +403,7 @@ def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
 
 
 def __err_dls_mse(start_state, sti, dls_limit, scale_md):
-    """ Return the sum of squares of dls above the dls_limit scaled by dls_limit"""
+    """ Return the sum of squares of dog leg severity above the dls_limit scaled by dls_limit"""
     projected_state, dls = __project(start_state, sti)
     dls_mis = (np.maximum(dls, dls_limit) - dls_limit) / dls_limit
     dls_mis = dls_mis ** 2
