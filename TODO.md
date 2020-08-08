@@ -2,17 +2,17 @@
 - Update requirements and setup.py
 - Update tests
 - Add more test
-- Add low and high inclination limits 
-- Training data contains some polluted points - remove them!
-- Move linear model and data to separate folder
-- Refactor, move create training data to separate file
-- Move model fitting over to separate repo to reduce dependencies?
+- Replace linear model with neural network model
+- Consinder boosting training data by added copied with randomly rotated co-ordinate systems
+- Move data to separate folder
 - Divert output from training to separate folder
-- Enhance loading of linear model from disk
+- Enhance loading of models from disk
+- Add low and high inclination limits 
 - Translate position in input for improved predictions when start is not at origo
 - Handle input that is outside of trained range by scaling position and dog leg limits
 - Wrap core function with user oriented Python API
 - Improve logging
+- Move model fitting over to separate repo to reduce dependencies?
 - Obtain a shitload of training data
 - Fit a neural network
 - Separate project: Make a RRT-star overlap. Consider using only a fitted model!
