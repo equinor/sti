@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 import sti.sti_core as sti_core
 
-# Script to remove data with bad fit from training
+"""
+Helper script to remove bad training data
+"""
 MAX_ERR = 0.1
 
 # Input data
