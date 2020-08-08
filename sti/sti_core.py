@@ -132,7 +132,6 @@ def __inital_guess(state_from, state_to, linear_model=True):
         basedir = os.path.dirname(basedir) 
         pickled_lm_file = os.path.join(basedir,'../models/', lm_file)
         pickled_lm_file = os.path.normpath(pickled_lm_file)
-        print(pickled_lm_file)
 
         print("Using linear model to initialize optimization.")
         reg_mod = pickle.load(open(pickled_lm_file, 'rb'))
