@@ -1,10 +1,7 @@
 import numpy as np
+import os
 from scipy.optimize import minimize, Bounds, dual_annealing#, NonlinearConstraint
-from random import random
 
-# Storing data and profiling
-from datetime import datetime
-import csv
 
 # For loading a linear model for guessworking
 import pickle
@@ -42,24 +39,21 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
 
     if VERBOSE:
         print("\nInitializing problem.")
-        print("\nCurrent target:")
-        print("---------------------")
-        print_state(target_state)
-        print("\nAttempting simple guess & local optimization.")
+        print("\nAttempting model prediction & local optimization.")
     # First attempt to fit with L-BFGS-B if the problem is simple.
     # Seems to work only for straight lines
     x0 = __inital_guess(start_state, target_state)
     result = minimize(of_feas, x0, bounds=bounds, method=METHOD)#, options={'iprint': 0, 'ftol' : np.finfo(float).eps})
 
     sti = result.x
-    projection, dls = __project(start_state, sti)
+    projection, dls = project_sti(start_state, sti)
     err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
 
 
     # Try to precondition the problem by solving a simpler one
     if(err > 0.1):
         if VERBOSE:
-            print("Target not found. Attempting precondintioning.")
+            print("Error above threshold. Attempting precondintioning.")
         x0 = sti
         of_precond = __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, md_weight)
         result = minimize(of_precond, x0, bounds=bounds, method=METHOD) #, options={'iprint': 0})
@@ -70,21 +64,21 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
 
         sti = result.x
 
-        projection, dls = __project(start_state, sti)
+        projection, dls = project_sti(start_state, sti)
         err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
 
     if(err > 0.1):
         if VERBOSE:
-            print("Target not found. Proceeding to global optimization")
+            print("Error above threshold. Proceeding to global optimization")
         bounds_list = list(zip(lb, ub))
 
         result = dual_annealing(of_feas, bounds_list)
         sti = result.x
 
-        projection, dls = __project(start_state, sti)
+        projection, dls = project_sti(start_state, sti)
         err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
         if VERBOSE:
-            print("ERR: ", err)
+            print("Final error: ", err)
 
 
     # TODO 'trust-constr' method is broken when using numdiff in current scipy, below code will not work
@@ -97,172 +91,49 @@ def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, 
     # result = minimize(of_min, x0, method='trust-constr', bounds=bounds, constraints=nlc, options={'verbose':1})
     # sti = result.x
 
-    # print("Result from local optimization:")
-    # print_sti(start_state, target_state, sti, dls_limit)
-
     return sti, err
 
 
-def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_slot, n_fully_random):
-    """ Produce training data for fitting a neural net model."""
+def project_sti(start_state, sti):
+    """ Project the sti using as root"""
+    dls = np.array([0.]*3)
+    dnorth = np.array([0.]*3)
+    deast = np.array([0.]*3)
+    dtvd = np.array([0.]*3)
+    inc = np.array([0.]*3)
+    azi = np.array([0.]*3)
+   
+    if(np.any(sti[6:9] <= 1e-5)):
+        raise ValueError("All md increments must be positive.")
 
-    filename = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = filename + ".csv"
+    # Ugly, but hopefully fast and auto-differentiable
+    dnorth[0], deast[0], dtvd[0], dls[0] = __min_curve_segment(start_state[0], start_state[3], sti[0], sti[3], sti[6])
+    dnorth[1], deast[1], dtvd[1], dls[1] = __min_curve_segment(sti[0], sti[3], sti[1], sti[4], sti[7])
+    dnorth[2], deast[2], dtvd[2], dls[2] = __min_curve_segment(sti[1], sti[4], sti[2], sti[5], sti[8])
 
-    def print_header(text):
-        print("\n\n#################################################################")
-        print(text)
-        print("#################################################################") 
-    
-    with open(filename,'x') as file:
-        headers = __get_header()
-        writer = csv.writer(file)
-        writer.writerow(headers)
+    p_north = start_state[0] + sum(dnorth)
+    p_east = start_state[1] + sum(deast)
+    p_tvd = start_state[2] + sum(dtvd)
+    p_inc = sti[2]
+    p_azi = sti[5]
 
-
-    for i in range(0,n_straight_down):
-        print_header("Straight down")
-
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [0, 0, random()*2500, 0, 0]
-
-        sti , err= faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("\nState mismatch: ", "{:.4f}".format(err))
-
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
-
-    for i in range(0, n_step_outs_v):
-        print_header("Step out to vertical in N/E sector")
-
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [random()*750, random()*750, 2000+random()*2000, 0, 0]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
-
-    for i in range(0, n_step_outs_h):
-        print_header("Step out to horizontal in N/E sector")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-
-        north = 1000+random()*2000
-        east = 1000+random()*2000
-        tvd = 2000+random()*2000
-
-        azi = np.arctan(east/north)
-        target_state = [north, east, tvd, np.pi/2, azi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
-
-    for i in range(0, n_below_slot):
-        print_header("Horizontal below KO")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [0, 0, 2000+random()*2000, np.pi/2, random()*2*np.pi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
-    
-    for i in range(0, n_fully_random):
-        print_header("Fully random - but KO at (0,0,0)")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, random()*np.pi, random()*2*np.pi]
-        target_state = [-4000+random()*8000, -4000+random()*8000, -4000+random()*8000, random()*np.pi/2, random()*2*np.pi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+    return (p_north, p_east, p_tvd, p_inc, p_azi), dls
 
 
-def __merge_training_data(start_state, target_state, dls_limit, sti):
-    data = []
-    data.extend(start_state)
-    data.extend(target_state)
-    data.append(dls_limit)
-    data.extend(sti)
-
-    return data
-
-
-def __get_header():
-    header = ["start_north",
-              "start_east",
-              "start_tvd",
-              "start_inc",
-              "start_azi",
-              "target_north",
-              "target_east",
-              "target_tvd",
-              "target_inc",
-              "target_azi",
-              "dls_limit",
-              "inc1",
-              "inc2",
-              "inc3",
-              "azi1",
-              "azi2",
-              "azi3",
-              "md_inc1",
-              "md_inc2",
-              "md_inc3",
-    ]
-
-    return header
-
-
-def __merge_info(start_state, target_state, dls_limit, sti):
-    merged = np.array()
-    merged.append(start_state)
-    merged.append(target_state)
-    merged.append(dls_limit)
-    merged.append(sti)
-
-    merged.flatten()
-
-    return merged
-
-
-def __inital_guess(state_from, state_to, pickled_lm_file='linear-mod.sav'):
+def __inital_guess(state_from, state_to, linear_model=True):
     """ Produce an inital guess. Will try to use a linear model if available."""
 
     # TODO Should keep the model in memory between runs. Refactor me.
-    if pickled_lm_file is not None:
+    if linear_model is True:
         # Try first using a linear model from previous runs
+        # TODO Improve me, this is not exactly beautiful
+        lm_file = 'linear-mod.sav'
+        basedir = os.path.abspath(__file__)
+        basedir = os.path.dirname(basedir) 
+        pickled_lm_file = os.path.join(basedir,'../models/', lm_file)
+        pickled_lm_file = os.path.normpath(pickled_lm_file)
+        print(pickled_lm_file)
+
         print("Using linear model to initialize optimization.")
         reg_mod = pickle.load(open(pickled_lm_file, 'rb'))
         reg_x = np.append(state_from, state_to).flatten()
@@ -299,40 +170,6 @@ def __inital_guess(state_from, state_to, pickled_lm_file='linear-mod.sav'):
     return x0 
 
 
-def print_state(state):
-    print("North: ", "{:.2f}".format(state[0]))
-    print("East : ", "{:.2f}".format(state[1]))
-    print("TVD  : ", "{:.2f}".format(state[2]))
-    print("Inc. : ", "{:.4f}".format(state[3]))
-    print("Azi. : ", "{:.4f}".format(state[4]))
-
-
-def print_sti(start_state, target_state, sti, dls_limit):
-    print("Start state: ")
-    print("----------------")
-    print_state(start_state)
-
-    print("\nTarget state:")
-    print("----------------")
-    print_state(target_state)
-
-    projected_state, dls = __project(start_state, sti)
-    print("\nProjected state:")
-    print("----------------")
-    print_state(projected_state)
-
-    tot_md = sti[6] + sti[7] + sti[8]
-    print("\nMD start-target: ", "{:.2f}".format(tot_md))
-    print("DLS limit: ", "{:.5f}".format(dls_limit))
-
-    print("\nLegs:")
-    print("----------------")
-    print("Leg 1, inc: ", "{:.4f}".format(sti[0]), " azi: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
-    print("Leg 2, inc: ", "{:.4f}".format(sti[1]), " azi: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
-    print("Leg 3, inc: ", "{:.4f}".format(sti[2]), " azi: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
-    print("--------------------------------------------------------------\n")
-
-
 def __truncate_to_bounds(sti, lb, ub, eps=0):
      # Truncate small negative violations from scipy optimize
      # eps is a workaround for https://github.com/scipy/scipy/issues/11403
@@ -340,33 +177,6 @@ def __truncate_to_bounds(sti, lb, ub, eps=0):
      tsti = np.minimum(tsti, ub - eps)
      return tsti
     
-
-def __project(start_state, sti):
-    """ Project the sti using as root"""
-    dls = np.array([0.]*3)
-    dnorth = np.array([0.]*3)
-    deast = np.array([0.]*3)
-    dtvd = np.array([0.]*3)
-    inc = np.array([0.]*3)
-    azi = np.array([0.]*3)
-   
-    if(np.any(sti[6:9] <= 1e-5)):
-        raise ValueError("All md increments must be positive.")
-
-    # Ugly, but hopefully fast and auto-differentiable
-    dnorth[0], deast[0], dtvd[0], dls[0] = __min_curve_segment(start_state[0], start_state[3], sti[0], sti[3], sti[6])
-    dnorth[1], deast[1], dtvd[1], dls[1] = __min_curve_segment(sti[0], sti[3], sti[1], sti[4], sti[7])
-    dnorth[2], deast[2], dtvd[2], dls[2] = __min_curve_segment(sti[1], sti[4], sti[2], sti[5], sti[8])
-
-    p_north = start_state[0] + sum(dnorth)
-    p_east = start_state[1] + sum(deast)
-    p_tvd = start_state[2] + sum(dtvd)
-    p_inc = sti[2]
-    p_azi = sti[5]
-
-    return (p_north, p_east, p_tvd, p_inc, p_azi), dls
-
-
 def __err_squared_pos_mismatch(state1, state2, scale_md):
     """ Error in bit position without consideration for orientation. """
     d2north = (state1[0] - state2[0])**2 
@@ -404,7 +214,7 @@ def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
 
 def __err_dls_mse(start_state, sti, dls_limit, scale_md):
     """ Return the sum of squares of dog leg severity above the dls_limit scaled by dls_limit"""
-    projected_state, dls = __project(start_state, sti)
+    projected_state, dls = project_sti(start_state, sti)
     dls_mis = (np.maximum(dls, dls_limit) - dls_limit) / dls_limit
     dls_mis = dls_mis ** 2
 
@@ -429,7 +239,7 @@ def __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, 
         WEIGHT_DLS = 0.1
         WEIGHT_MD  = 0.0
 
-        projected_state, dls = __project(start_state, sti)
+        projected_state, dls = project_sti(start_state, sti)
 
         sq_pos_err = __err_squared_pos_mismatch(projected_state, target_state, scale_md)
         sq_ori_err = __err_squared_orient_mismatch(projected_state, target_state, dls_limit)
@@ -445,7 +255,7 @@ def __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, 
 def __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight):
 
     def of_feasibility(sti):
-        projected_state, dls = __project(start_state, sti)
+        projected_state, dls = project_sti(start_state, sti)
 
         sq_state_err = __err_squared_state_mismatch(projected_state, target_state, dls_limit, scale_md)
         sq_dls_err = __err_dls_mse(start_state, sti, dls_limit, scale_md)
@@ -476,7 +286,7 @@ def __get_optifuns_min_length(scale_md):
 
 def __get_non_linear_constraint(start_state, target_state, dls_limit, scale_md, tol, keep_feasible=False):
     def nlc_fun(sti):
-        projected_state, dls = __project(start_state, sti)
+        projected_state, dls = project_sti(start_state, sti)
         sq_state_err = __err_squared_state_mismatch(projected_state, target_state, dls_limit, scale_md)
         
         # Super explict, hoping for autodiff
@@ -537,12 +347,3 @@ def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
     dls = dogleg / md_inc
 
     return dnorth, deast, dtvd, dls
-
-
-if __name__ == '__main__':
-    start_time = datetime.now()
-    create_training_data(0, 0, 0, 0, 10000)
-    end_time = datetime.now()
-    delta = end_time - start_time
-    print("Elapsed walltime:")
-    print(delta)

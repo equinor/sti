@@ -12,7 +12,7 @@ import pickle
 filename_data ='data.csv'
 
 # Store the final model here for use later
-filename_model = 'linear-mod.sav'
+filename_model = 'models/linear-mod.sav'
 
 df = pd.read_csv(filename_data)
 
