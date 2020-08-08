@@ -11,6 +11,8 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
     filename = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = filename + ".csv"
 
+    MAX_ERR = 0.1
+
     def print_header(text):
         print("\n\n#################################################################")
         print(text)
@@ -33,50 +35,59 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         print_sti(start_state, target_state, sti, dls_limit)
         print("\nState mismatch: ", "{:.4f}".format(err))
 
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+        if err < MAX_ERR:
+            data = __merge_training_data(start_state, target_state, dls_limit, sti)
+            with open(filename,'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        else:
+            print("Error above threshold, will not store datapoint.")
 
     for i in range(0, n_step_outs_v):
-        print_header("Step out to vertical in N/E sector")
+        print_header("Step out to vertical")
 
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, 0, 0]
-        target_state = [random()*750, random()*750, 2000+random()*2000, 0, 0]
+        target_state = [-750 + random()*1500, -750 + random()*1500, 2000+random()*2000, 0, 0]
 
         sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
         print_sti(start_state, target_state, sti, dls_limit)
         print("State mismatch:", err)
 
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+        if err < MAX_ERR:
+            data = __merge_training_data(start_state, target_state, dls_limit, sti)
+            with open(filename,'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        else:
+            print("Error above threshold, will not store datapoint.")
 
     for i in range(0, n_step_outs_h):
-        print_header("Step out to horizontal in N/E sector")
+        print_header("Step out to horizontal")
         dls_limit = random()*0.003 + 0.0015
         start_state = [0, 0, 0, 0, 0]
 
-        north = 1000+random()*2000
-        east = 1000+random()*2000
+        north = -2000+random()*4000
+        east = -2000+random()*4000
         tvd = 2000+random()*2000
 
-        azi = np.arctan(east/north)
+        azi = np.arctan2(east, north)
+        if azi < 0:
+            azi = azi + 2*np.pi
+
         target_state = [north, east, tvd, np.pi/2, azi]
 
         sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
         print_sti(start_state, target_state, sti, dls_limit)
         print("State mismatch:", err)
 
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+        if err < MAX_ERR:
+            data = __merge_training_data(start_state, target_state, dls_limit, sti)
+            with open(filename,'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        else:
+            print("Error above threshold, will not store datapoint.")
 
     for i in range(0, n_below_slot):
         print_header("Horizontal below KO")
@@ -88,11 +99,13 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         print_sti(start_state, target_state, sti, dls_limit)
         print("State mismatch:", err)
 
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+        if err < MAX_ERR:
+            data = __merge_training_data(start_state, target_state, dls_limit, sti)
+            with open(filename,'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        else:
+            print("Error above threshold, will not store datapoint.")
     
     for i in range(0, n_fully_random):
         print_header("Fully random - but KO at (0,0,0)")
@@ -104,11 +117,13 @@ def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_
         print_sti(start_state, target_state, sti, dls_limit)
         print("State mismatch:", err)
 
-        data = __merge_training_data(start_state, target_state, dls_limit, sti)
-
-        with open(filename,'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+        if err < MAX_ERR:
+            data = __merge_training_data(start_state, target_state, dls_limit, sti)
+            with open(filename,'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        else:
+            print("Error above threshold, will not store datapoint.")
 
 
 def __merge_training_data(start_state, target_state, dls_limit, sti):
@@ -194,7 +209,7 @@ def print_sti(start_state, target_state, sti, dls_limit):
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    create_training_data(0, 0, 0, 0, 10000)
+    create_training_data(15, 15, 15, 15, 15)
     end_time = datetime.now()
     delta = end_time - start_time
     print("Elapsed walltime:")
