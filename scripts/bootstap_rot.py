@@ -20,7 +20,7 @@ def spherical_to_net(inc, azi):
     east = east / norm
     tvd = tvd / norm
 
-    return (north, east, tvd)
+    return np.array((north, east, tvd))
 
 def net_to_spherical(north, east, tvd):
     """
@@ -33,7 +33,7 @@ def net_to_spherical(north, east, tvd):
     if azi < 0:
         azi = azi + 2*np.pi
 
-    return (inc, azi)
+    return np.array((inc, azi))
 
 
 def transform_state(A, state):
@@ -84,6 +84,35 @@ def transform_sti(A, sti):
     sti_rot[8] = sti[8]
     
     return sti_rot
+
+def get_rot_to_origi(inc, azi):
+    """
+    Find a 3x3 matrix that rotates the directional vector
+    defined by inc, azi to (0, 0, 1) in 3D or (0,0) in
+    spherical co-ordinates.
+
+    Using Gram Schmidt.
+    """
+
+    def proj(u, v):
+        t = np.dot(v,u)
+        n = np.dot(u,u)
+
+        return t/n * u
+
+    z = spherical_to_net(inc, azi)
+    x = np.array((random(), random(), random()))
+    y = np.array((random(), random(), random()))
+
+    x = x - proj(z,x)
+    y = y - proj(z,y) - proj(x,y)
+
+    A = np.array([x, y, z])
+    A = A.T
+
+    B = np.linalg.inv(A)
+
+    return B
 
 def test_transform_state(n=100):
 
@@ -218,5 +247,16 @@ if __name__ == '__main__':
     test_transform_sti(100)
     test_bootstrap_rot1()
 
+    inc = random() * np.pi
+    azi = 0
 
+    vec = spherical_to_net(inc, azi)
 
+    B = get_rot_to_origi(inc ,azi)
+
+    print(vec)
+    vec = np.dot(B, vec)
+
+    # print(B)
+
+    print(vec)
