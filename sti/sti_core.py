@@ -107,9 +107,9 @@ def project_sti(start_state, sti):
         raise ValueError("All md increments must be positive.")
 
     # Ugly, but hopefully fast and auto-differentiable
-    dnorth[0], deast[0], dtvd[0], dls[0] = __min_curve_segment(start_state[0], start_state[3], sti[0], sti[3], sti[6])
-    dnorth[1], deast[1], dtvd[1], dls[1] = __min_curve_segment(sti[0], sti[3], sti[1], sti[4], sti[7])
-    dnorth[2], deast[2], dtvd[2], dls[2] = __min_curve_segment(sti[1], sti[4], sti[2], sti[5], sti[8])
+    dnorth[0], deast[0], dtvd[0], dls[0] = min_curve_segment(start_state[3], start_state[4], sti[0], sti[3], sti[6])
+    dnorth[1], deast[1], dtvd[1], dls[1] = min_curve_segment(sti[0], sti[3], sti[1], sti[4], sti[7])
+    dnorth[2], deast[2], dtvd[2], dls[2] = min_curve_segment(sti[1], sti[4], sti[2], sti[5], sti[8])
 
     p_north = start_state[0] + sum(dnorth)
     p_east = start_state[1] + sum(deast)
@@ -314,7 +314,7 @@ def __get_sti_bounds():
     return lb, ub
 
 
-def __min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
+def min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
     """Inner workhorse, designed for auto differentiability."""
     # Stolen from wellpathpy
     cos_inc = np.cos(inc_lower - inc_upper)
