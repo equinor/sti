@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.stats import ortho_group, special_ortho_group
 from random import random
 import sti.sti_core as sti_core
+import sti.sti_utils as sti_utils
 
 def spherical_to_net(inc, azi):
     """ 
@@ -84,7 +85,7 @@ def transform_sti(A, sti):
     
     return sti_rot
 
-def test_transform_state(n):
+def test_transform_state(n=100):
 
     for i in range(0,n):
         north = -1 + 2*random()
@@ -111,7 +112,7 @@ def test_transform_state(n):
         if norm > 1e-4:
             print("error!")
 
-def test_transform_sti(n):
+def test_transform_sti(n=100):
 
     for i in range(0,n):
         sti = np.array([0.]*9)
@@ -138,7 +139,7 @@ def test_transform_sti(n):
         if norm > 1e-4:
             print("error!")
 
-def test_transform(n):
+def test_transform(n=100):
 
     for i in range(0,n):
         north = -1 + 2*random()
@@ -159,24 +160,13 @@ def test_transform(n):
         if norm > 1e-4:
             print(norm)
 
-
-if __name__ == '__main__':
-
-    test_transform(1000)
-    test_transform_state(100)
-    test_transform_sti(100)
-
-
-    # Input data
-    filename_data ='data.csv'
-    filename_clean = 'data_bootstrapped.csv'
+def test_bootstrap_rot1(n=10, filename_data='data.csv'):
 
     # Read dataset
     df = pd.read_csv(filename_data)
 
     # Find rows with bad data
-    bad = []
-    for i in range(0, df.shape[0], 1000):
+    for i in range(0, df.shape[0], n):
         states = np.array(df.iloc[i,0:11].values)
 
         from_state = states[0:5]
@@ -186,25 +176,47 @@ if __name__ == '__main__':
 
         # Error before transform
         projection, dls = sti_core.project_sti(from_state, sti)
-        err = sti_core.__err_squared_state_mismatch(to_state, projection, dls_limit, scale_md=100)
-        print("Before rotation, errror: ", err)
+        err_before = sti_core.__err_squared_state_mismatch(to_state, projection, dls_limit, scale_md=100)
+        # sti_utils.print_sti(from_state, to_state, sti, dls_limit)
 
         # Draw a random transform
         A  = ortho_group.rvs(3)
         # A = special_ortho_group.rvs(3)
 
         # Transform
-        from_state = transform_state(A, from_state)
-        to_state = transform_state(A, to_state)
-        sti = transform_sti(A, sti)
-
-        print(from_state)
-        print(to_state)
-        print(sti)
-
+        from_state_t = transform_state(A, from_state)
+        to_state_t = transform_state(A, to_state)
+        sti_t = transform_sti(A, sti)
 
         # Validate
-        projection, dls = sti_core.project_sti(from_state, sti)
-        err = sti_core.__err_squared_state_mismatch(to_state, projection, dls_limit, scale_md=100)
-        print("After rotation, errror: ", err)
+        projection_t, dls = sti_core.project_sti(from_state_t, sti_t)
+        err_after = sti_core.__err_squared_state_mismatch(to_state_t, projection_t, dls_limit, scale_md=100)
+
+        # sti_utils.print_sti(from_state, to_state, sti, dls_limit)
+
+        norm = (err_before - err_after) ** 2
+
+        if norm > 1e-3:
+            print(norm) 
+            print("\n\n\n\nBefore")
+            print("######################")
+            sti_utils.print_sti(from_state, to_state, sti, dls_limit)
+            print("Err before:", err_before)
+            print("After")
+            print("######################")
+            sti_utils.print_sti(from_state_t, to_state_t, sti_t, dls_limit)
+            print("Err after:", err_after)
+
+
+
+
+
+if __name__ == '__main__':
+
+    test_transform(1000)
+    test_transform_state(100)
+    test_transform_sti(100)
+    test_bootstrap_rot1()
+
+
 
