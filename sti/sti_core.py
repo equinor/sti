@@ -364,29 +364,20 @@ def dogleg_toolface(inc_upper, azi_upper, toolface, dls, md_inc):
 
     Special cases for inc=0 and inc=pi.
 
-    For inc=0, standard magnetic toolface is used
+    For inc 0 and pi, standard magnetic toolface is used
 
     Examples:
-        inc=0, toolface=pi    -> Downwards south 
-        inc=0, toolface=0     -> Downwards north
-        inc=0, toolface=pi/2  -> Downwards east
-        inc=0, toolface=3pi/2 -> Downwards west
+        inc=0, toolface=pi    -> Down/Upwards south 
+        inc=0, toolface=0     -> Down/Upwards north
+        inc=0, toolface=pi/2  -> Down/Upwards east
+        inc=0, toolface=3pi/2 -> Down/Upwards west
     
-    For inc=pi, the magnetic toolface orientation is reversed, 
-
-    Examples:
-        inc=pi, toolface=pi    -> Upwards north
-        inc=pi, toolface=0     -> Upwards south
-        inc=pi, toolface=pi/2  -> Upwards east
-        inc=pi, toolface=3pi/2 -> Upwards west
-
     This is done to be able to translate the co-ordinate system with
     out too much brain hurt.
 
     How to transform toolface:
         Gravity toolface: Plane defined by local (inc, azi) with proj( (0,0,-1)) as north
-        Magnetic toolface, inc=0: Angle in plane defined by  (0, 0, 1) vs (1,0,0) as north
-        Magnetic toolface, inc=pi: Angle in plance defined by (0, 0, 1) vs (-1, 0, 0) as north
+        Magnetic toolface: Angle in plane defined by  (0, 0, 1) vs (1,0,0) as north
 
         Process:
         Express toolface direction as inc, azi, need wellpath inc,azi & tf.
@@ -394,7 +385,7 @@ def dogleg_toolface(inc_upper, azi_upper, toolface, dls, md_inc):
         Rotate (n, e, t)
         Transform tf (n, e, t) -> (inc, azi)
         (Transform wellpath inc/azi using same rotations)
-        Using transformed wellpath inc,azi and tf inc azi, calculate new tf.
+        Using transformed wellpath inc,azi and tf as inc azi, calculate new tf.
 
     """
 
@@ -427,7 +418,7 @@ def dogleg_toolface(inc_upper, azi_upper, toolface, dls, md_inc):
             azi_lower = azi_lower + 2*np.pi
 
 
-        # Handle inc_upper=0
+        # Handle inc_upper 0 or pi
         # In these cases, the magnetic toolface is used intially
         # In practice, the result are curves in a specific azimuthal direction,
         # that is only build, no turn.
@@ -435,97 +426,23 @@ def dogleg_toolface(inc_upper, azi_upper, toolface, dls, md_inc):
             azi_lower = toolface
         
         dnorth, deast, dtvd, dls = min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc)
-        return dnorth, deast, dtvd, dls
+        return np.array((dnorth, deast, dtvd, inc_lower, azi_lower))
         
-if __name__ == '__main__':
+def get_toolface_as_vector(bit_inc, bit_azi, toolface):
+
+    raise NotImplementedError
+
+# if __name__ == '__main__':
     
-    # print("From (pi/2, 0\n")
+    # segment = dogleg_toolface(np.pi, 0., 2*np.pi*3/8, 0.001, 800)
+    # print("South East: ", segment)
 
-    # segment = dogleg_toolface(np.pi/2, 0., 2*np.pi * 1/4, 0.002, 300)
-    # print("Right: ", segment)
+    # tf = np.linspace(0,2*np.pi, 100)
+    # inc = np.copy(tf)
+    # azi = np.copy(tf)
 
-    # segment = dogleg_toolface(np.pi/2, 0., 2*np.pi * 2/4, 0.002, 300)
-    # print("Down: ", segment)
+    # for i in range(0, len(tf)):
+    #     _, _, _, inc[i], azi[i] = dogleg_toolface(np.pi, 0, tf[i],0.001, 250)
 
-    # segment = dogleg_toolface(np.pi/2, 0., 2*np.pi * 3/4, 0.002, 300)
-    # print("Left : ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, 0., 2*np.pi * 4/4, 0.002, 300)
-    # print("Up: ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, 0., 2*np.pi * 0/4, 0.002, 300)
-    # print("Up: ", segment)
-
-    # print("From (pi/2, pi\n")
-
-    # segment = dogleg_toolface(np.pi/2, np.pi, 2*np.pi * 1/4, 0.002, 300)
-    # print("Right: ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, np.pi, 2*np.pi * 2/4, 0.002, 300)
-    # print("Down: ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, np.pi, 2*np.pi * 3/4, 0.002, 300)
-    # print("Left : ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, np.pi, 2*np.pi * 4/4, 0.002, 300)
-    # print("Up: ", segment)
-
-    # segment = dogleg_toolface(np.pi/2, np.pi, 2*np.pi * 0/4, 0.002, 300)
-    # print("Up: ", segment)
-
-
-    print("From (0, 0)\n")
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 1/8, 0.001, 800)
-    print("North East: ", segment)
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 1/4, 0.002, 300)
-    print("East: ", segment)
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 2/4, 0.002, 300)
-    print("South: ", segment)
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 3/4, 0.002, 300)
-    print("West : ", segment)
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 4/4, 0.002, 300)
-    print("North: ", segment)
-
-    segment = dogleg_toolface(0., 0., 2*np.pi * 0/4, 0.002, 300)
-    print("North: ", segment)
-
-    segment = dogleg_toolface(0., 0., np.pi * 3/4, 0.002, 300)
-    print("South East: ", segment)
-
-    print("From (np.pi, 0)\n")
-
-    segment = dogleg_toolface(np.pi, 0., 0, 0.001, 800)
-    print("North: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., np.pi, 0.001, 800)
-    print("South: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., 3/4*np.pi, 0.001, 800)
-    print("South East: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., 1/2*np.pi, 0.001, 800)
-    print("East: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., np.pi*3/2, 0.001, 800)
-    print("West: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., 2*np.pi*5/8, 0.001, 800)
-    print("South West: ", segment)
-
-    segment = dogleg_toolface(np.pi, 0., 2*np.pi*3/8, 0.001, 800)
-    print("South East: ", segment)
-
-    tf = np.linspace(0,2*np.pi, 100)
-    inc = np.copy(tf)
-    azi = np.copy(tf)
-
-    for i in range(0, len(tf)):
-        _, _, _, _, inc[i], azi[i] = dogleg_toolface(0, 0, tf[i],0.001, 250)
-
-    plt.plot(tf, inc)
-    plt.show()
+    # plt.plot(tf, azi)
+    # plt.show()
