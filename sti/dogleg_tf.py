@@ -2,7 +2,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 
-def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
+def dogleg_toolface_step(inc0, azi0, dls, toolface, md_inc):
     """ Calculate position increments from a step of the dogleg
     tool face method.
 
@@ -22,7 +22,7 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
 
     Approach:
 
-    Need to do some numerical wizardry here. Probably prefer
+    Need to do some numerical wizardry here. And we'd like 
     to stay in Cartesian co-ordinates when doing that.
 
     Also, probably want to use the instant tf vector, say tfv.
@@ -35,10 +35,6 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
 
     Note that the tool face vector changes along the trajetory,
     while the tool face angle is constant.
-
-    BONUS: Tool face vector is continouos under rotations.
-
-    tfv ( n_s, e_s, t_s, tf) -> (n, e, t)
 
     So we need a function to calculate this guy, which essentially
     is the unit normal vector of the wellbore, see [1]. Further,
@@ -74,13 +70,11 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
     change the behaviour to drill in circles as the physical system would
     with a untwistable drill string and fixed tf.
 
-    Proposed idea: Bring along the initial up direction in the ODE system,
-    and calculate the toolface vector from this.
+    We solve wthis problem by augmenting the ODE system with a local up
+    vector l. We then calculate the tfv using this as reference vector.
 
-    Augment the ODE system with a local up vector l. We then calculate
-    the tfv using this as reference vector.
-
-    For this local up vector, we would like:
+    For this local up vector, we would like the following properties to
+    be preserved by the dynamics:
     * Ortogonality to the bit direction
     * Ortogonality to the east direction as defined by the cross product
       of it self with the bit direction
@@ -123,55 +117,67 @@ def proj(u, v):
 
     return t/n * u
 
-def tfv_from_cart_direction_with_given_up(north, east, tvd, toolface, up_north, up_east, up_tvd):
+def tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, up_n, up_e, up_t):
     """
     Calculate the toolface vector from bit direction and a given upwards direction
 
-    Notes
+    Implementation:
 
-    Create a local system based on bit orientation, calculate tfv in this,
-    and transform back
+    Create a local system based on bit orientation and provided upwards direction, 
+    calculate tfv using magnetic tfv and transform back.
 
     Let the bit direction be positive t, then we project upward direction
     on the bit vector to obtain the ortogonal north in a magnetic system.
     At last, we take the cross product of these to obtain a rhs system.
 
     In this system, toolface vector is trivially the magnetic toolface vector, which
-    we easily can compute. Thereafter, we transform back to to the true (n,e,t)
+    we easily can compute. Thereafter, we transform back to to the provided (n,e,t)
     system, normalize and return
 
     """
-    t = np.array((north, east, tvd))
-    n = np.array((up_north, up_east, up_tvd))
-    n = n - proj(t,n)
-    e = np.cross(t,n)
+    if toolface < 0.0:
+        #Straight ahead
+        tfv = np.array((bit_n, bit_e, bit_t))
+    else:
+        t = np.array((bit_n, bit_e, bit_t))
+        n = np.array((up_n, up_e, up_t))
+        n = n - proj(t,n)
+        e = np.cross(t,n)
 
-    mag_n = np.cos(toolface)
-    mag_e = np.sin(toolface)
-    mag_t = 0.0
+        mag_n = np.cos(toolface)
+        mag_e = np.sin(toolface)
+        mag_t = 0.0
 
-    tfv_mag = np.array((mag_n, mag_e, mag_t))
+        tfv_mag = np.array((mag_n, mag_e, mag_t))
 
-    A = np.array((n, e, t))
-    B = np.linalg.inv(A)
+        A = np.array((n, e, t))
+        B = np.linalg.inv(A)
 
-    tfv = np.dot(B,tfv_mag)
+        tfv = np.dot(B,tfv_mag)
+    
+    # Return a normalized vector
     norm = (np.dot(tfv, tfv))**(0.5)
-
     assert(norm > 0)
 
     tfv = tfv / norm
 
     return tfv
 
-def tfv_from_cart_direction(north, east, tvd, toolface):
+def tfv_from_cart_direction(bit_n, bit_e, bit_t, toolface):
     """
-    Calculate the toolface vector from (n, e, t) direction vector.
+    Calculate the toolface vector from (n, e, t) bit direction
+    and toolface angle.
+
     """
     t_n = 0.0
     t_e = 0.0
     t_t = 0.0
-    if abs(north) + abs(east) < 1e-6:
+
+    if toolface < 0.0:
+        #Straight ahead
+        tfv = np.array((bit_n, bit_e, bit_t))
+        return tfv
+    elif abs(bit_n) + abs(bit_e) < 1e-6:
         # Magnetic toolface, normalized by definition
         t_n = np.cos(toolface) 
         t_e = np.sin(toolface)
@@ -179,7 +185,7 @@ def tfv_from_cart_direction(north, east, tvd, toolface):
         return np.array((t_n, t_e, t_t))
     else:
         # Gravity toolface
-        tfv = tfv_from_cart_direction_with_given_up(north, east, tvd, toolface, 0, 0, -1)
+        tfv = tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, 0, 0, -1)
 
         return tfv
 
@@ -246,12 +252,6 @@ def ode_rhs(s, y, dls, init_toolface_angle):
     B = np.linalg.inv(A)
     l_s = np.dot(B,rhs)
 
-    # Small sanity check here..
-    grav = np.array([0.0, 0.0, -1.0])
-    qcc = np.dot(bit, grav)
-
-    print("QC:", qcc)
-
     y_s[6] = l_s[0]
     y_s[7] = l_s[1]
     y_s[8] = l_s[2]
@@ -286,7 +286,7 @@ def spherical_to_net(inc, azi):
 
 def net_to_spherical(north, east, tvd):
     """
-    Transform orientation of a (north, east, tvd) tuple
+    Transform orientation of a (north, east, tvd) direction
     to (inc, azi)
     """
     r = (north**2 + east**2 + tvd**2) ** (0.5)
@@ -297,28 +297,45 @@ def net_to_spherical(north, east, tvd):
 
     return np.array((inc, azi))
 
-if __name__ == '__main__':
-    # vec = tfv_from_cart_direction(1.0,0.0,0.0, 0/2*np.pi )
-    # print(vec)
+def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, dense_output=False):
+    """
+    Inner method, using Carestian co-ordinates.
 
-    # Start northwards drill in a circle 
-    dls = 0.002
-    md = 3200
-    tf_0 = 1*np.pi / 4
-    n_0 = 0.0
-    e_0 = 0.0
-    t_0 = 0.0
-    b_n_0 = 1.0
-    b_e_0 = 0.0
-    b_t_0 = 0.0
+    Take a step of dogleg toolface method, initial position at (0, 0, 0).
+
+    Parameters:
+    -----------
+    b_n_0: Initial bit north direction
+    b_e_0: Initial bit east direction
+    b_t_0: Initial bit tvd direction
+    dls: Dogleg severity
+    tf0: Initial toolface angle
+    md: Measured depth (arc length)
+    dense_output: Provide sampling every 1th unit for plotting etc.
+
+    """
+
+    bit_norm = (b_n_0**2 + b_e_0**2 + b_t_0**2) ** (0.5)
+
+    b_n_0 = b_n_0 / bit_norm 
+    b_e_0 = b_e_0 / bit_norm 
+    b_t_0 = b_t_0 / bit_norm 
+
+    # Default to gravity reference
     l_n_0 = 0.0
     l_e_0 = 0.0
     l_t_0 = -1.0
 
+    # But check it we're pointing straight up or down, then we swtich to north
+    if abs(b_e_0) + abs(b_n_0) < 1e-6:
+        l_n_0 = 1.0
+        l_e_0 = 0.0
+        l_t_0 = 0.0
+
     y_0 = [
-        n_0   ,
-        e_0   ,
-        t_0   ,
+        0.0 ,
+        0.0 ,
+        0.0 ,
         b_n_0 ,
         b_e_0 ,
         b_t_0 ,
@@ -327,17 +344,30 @@ if __name__ == '__main__':
         l_t_0 ,
         ]
 
-    sol = solve_ivp(ode_rhs,[0, md], y_0, args=(dls, tf_0), dense_output=True, method='Radau')
+    sol = solve_ivp(ode_rhs,[0, md], y_0, args=(dls, tf0), dense_output=dense_output, method='Radau')
 
-    # print("Full solution")
-    # print(sol.y)
-    # print("End point")
-    # print(sol.y[-1])
+    z = None
 
-    md_dense = np.linspace(0, md, md)
-    z = sol.sol(md_dense)
+    if dense_output:
+        md_dense = np.linspace(0, md, md)
+        z = sol.sol(md_dense)
+        z = z.T
+
+    return sol, z
+
+
+if __name__ == '__main__':
+    b_n_0 = 1.0
+    b_e_0 = 1.0
+    b_t_0 = 1.0
+
+    dls = 0.002
+    md = 6400
+    tf0 = 1/8 * (2 * np.pi)
+
+    sol, z = dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, True)
+
     import matplotlib.pyplot as plt
-    z = z.T
 
     # z = z[:,0:3]
     # plt.plot(md_dense, z)
@@ -354,8 +384,10 @@ if __name__ == '__main__':
     y = z[:,1].flatten()
     z = z[:,2].flatten()
 
-    print(x.shape)
-
     ax.plot(x, y, z)
+
+    ax.set_xlabel('North')
+    ax.set_ylabel('East')
+    ax.set_zlabel('TVD')
 
     plt.show()
