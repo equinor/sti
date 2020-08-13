@@ -201,15 +201,15 @@ def print_sti(start_state, target_state, sti, dls_limit):
 
     print("\nLegs:")
     print("----------------")
-    print("Leg 1, inc: ", "{:.4f}".format(sti[0]), " azi: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
-    print("Leg 2, inc: ", "{:.4f}".format(sti[1]), " azi: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
-    print("Leg 3, inc: ", "{:.4f}".format(sti[2]), " azi: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
+    print("Leg 1, toolface: ", "{:.4f}".format(sti[0]), " dls: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
+    print("Leg 2, toolface: ", "{:.4f}".format(sti[1]), " dls: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
+    print("Leg 3, toolface: ", "{:.4f}".format(sti[2]), " dls: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
     print("--------------------------------------------------------------\n")
 
 
 if __name__ == '__main__':
     start_time = datetime.now()
-    create_training_data(15, 15, 15, 15, 15)
+    create_training_data(0, 15, 15, 15, 15)
     end_time = datetime.now()
     delta = end_time - start_time
     print("Elapsed walltime:")
