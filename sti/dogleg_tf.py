@@ -2,9 +2,17 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 
-def dogleg_toolface_step(inc0, azi0, dls, toolface, md_inc):
+def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, toolface, md, dense_output=False):
+    """
+    """
+    raise NotImplementedError
+
+def dogleg_toolface_ode(inc0, azi0, dls, toolface, md_inc, dense_output=False):
     """ Calculate position increments from a step of the dogleg
-    tool face method.
+    tool face method using an ODE solver.
+    
+    This function is more of academic interest, you're probaly looking
+    for dogleg_toolface()
 
     Parameters:
     inc0: bit inclination at start of step
@@ -12,15 +20,14 @@ def dogleg_toolface_step(inc0, azi0, dls, toolface, md_inc):
     dls: dog leg severity limit for the step
     toolface: gravity toolface, negative values are straight ahead
     md: step to take
+    dense_out: supply dense out for diagnostics and plotting
 
     Returns:
-    (north, east, tvd, inc_lower, azi_lower) - position as increments
-    """
+    state: array of (north, east, tvd, inc_lower, azi_lower)
+    sol: OdeSolution
+    z: Dense sampling of solution, only if dense_output is true
 
-    """
-    Note to self:
-
-    Approach:
+    Implementation
 
     Need to do some numerical wizardry here. And we'd like 
     to stay in Cartesian co-ordinates when doing that.
@@ -95,7 +102,7 @@ def dogleg_toolface_step(inc0, azi0, dls, toolface, md_inc):
     <l_s, b> = -<l, dls * tfb>                             (3)
     <_ls>, l x b> = -1/2 * <l, l x dls * tfv>
 
-    This can easily be solved for l_s as input to an ODE solver.
+    This can easily be solved for l_s for each step in an ODE solver.
 
     Our full state is then:
 
@@ -105,89 +112,99 @@ def dogleg_toolface_step(inc0, azi0, dls, toolface, md_inc):
 
     [1] https://en.wikipedia.org/wiki/Curvature#Space_curves
     """
-    raise NotImplementedError
+
+    (b_n_0, b_e_0, b_t_0) = spherical_to_net(inc0, azi0)
+    bit = (b_n_0, b_e_0, b_t_0) 
+    sol, z = dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, dense_output)
+
+    y_end = sol.y[:,-1]
+
+    # Store the end position, inc and azi
+    state = np.array([0.0]*5)
+    state[0] = y_end[0]
+    state[1] = y_end[1]
+    state[2] = y_end[2]
+
+    inc, azi = net_to_spherical(y_end[3], y_end[4], y_end[5])
+
+    state[3] = inc
+    state[4] = azi
+
+    return state, sol, z
 
 
-def proj(u, v):
+def dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, dls, toolface, md, dense_output=False):
     """
-    Project v on u
-    """
-    t = np.dot(v,u)
-    n = np.dot(u,u)
+    Inner method, using Carestian co-ordinates.
 
-    return t/n * u
+    Take a step of dogleg toolface method, initial position at (0, 0, 0).
 
-def tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, up_n, up_e, up_t):
-    """
-    Calculate the toolface vector from bit direction and a given upwards direction
-
-    Implementation:
-
-    Create a local system based on bit orientation and provided upwards direction, 
-    calculate tfv using magnetic tfv and transform back.
-
-    Let the bit direction be positive t, then we project upward direction
-    on the bit vector to obtain the ortogonal north in a magnetic system.
-    At last, we take the cross product of these to obtain a rhs system.
-
-    In this system, toolface vector is trivially the magnetic toolface vector, which
-    we easily can compute. Thereafter, we transform back to to the provided (n,e,t)
-    system, normalize and return
-
-    """
-    if toolface < 0.0:
-        #Straight ahead
-        tfv = np.array((bit_n, bit_e, bit_t))
-    else:
-        t = np.array((bit_n, bit_e, bit_t))
-        n = np.array((up_n, up_e, up_t))
-        n = n - proj(t,n)
-        e = np.cross(t,n)
-
-        mag_n = np.cos(toolface)
-        mag_e = np.sin(toolface)
-        mag_t = 0.0
-
-        tfv_mag = np.array((mag_n, mag_e, mag_t))
-
-        A = np.array((n, e, t))
-        B = np.linalg.inv(A)
-
-        tfv = np.dot(B,tfv_mag)
-    
-    # Return a normalized vector
-    norm = (np.dot(tfv, tfv))**(0.5)
-    assert(norm > 0)
-
-    tfv = tfv / norm
-
-    return tfv
-
-def tfv_from_cart_direction(bit_n, bit_e, bit_t, toolface):
-    """
-    Calculate the toolface vector from (n, e, t) bit direction
-    and toolface angle.
+    Parameters:
+    -----------
+    b_n_0: Initial bit north direction
+    b_e_0: Initial bit east direction
+    b_t_0: Initial bit tvd direction
+    dls: Dogleg severity
+    toolface: Toolface angle
+    md: Measured depth (arc length)
+    dense_output: Provide sampling every 1th unit for plotting etc.
 
     """
-    t_n = 0.0
-    t_e = 0.0
-    t_t = 0.0
 
-    if toolface < 0.0:
-        #Straight ahead
-        tfv = np.array((bit_n, bit_e, bit_t))
-        return tfv
-    elif abs(bit_n) + abs(bit_e) < 1e-6:
-        # Magnetic toolface, normalized by definition
-        t_n = np.cos(toolface) 
-        t_e = np.sin(toolface)
-        t_t = 0.0
-        return np.array((t_n, t_e, t_t))
-    else:
-        # Gravity toolface
-        tfv = tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, 0, 0, -1)
+    bit_norm = (b_n_0**2 + b_e_0**2 + b_t_0**2) ** (0.5)
 
-        return tfv
+    b_n_0 = b_n_0 / bit_norm 
+    b_e_0 = b_e_0 / bit_norm 
+    b_t_0 = b_t_0 / bit_norm 
+
+    # Default to gravity reference
+    l_n_0 = 0.0
+    l_e_0 = 0.0
+    l_t_0 = -1.0
+
+    # Ortogonolize wrt. to bit
+    bit0 = np.array([b_n_0, b_e_0, b_t_0])
+    l0 = np.array([l_n_0, l_e_0, l_t_0])
+
+    l0 = l0 -proj(bit0, l0)
+
+    l0_norm = (l0[0]**2 + l0[1]**2 + l0[2]**2) ** (0.5)
+    l0 = l0 / l0_norm
+
+    l_n_0 = l0[0]
+    l_e_0 = l0[1]
+    l_t_0 = l0[2]
+
+    # But check it we're pointing straight up or down, then we swtich to north
+    if abs(b_e_0) + abs(b_n_0) < 1e-6:
+        l_n_0 = 1.0
+        l_e_0 = 0.0
+        l_t_0 = 0.0
+
+    y_0 = [
+        0.0 ,
+        0.0 ,
+        0.0 ,
+        b_n_0 ,
+        b_e_0 ,
+        b_t_0 ,
+        l_n_0 ,
+        l_e_0 ,
+        l_t_0 ,
+        ]
+
+    # Stiff problem, cannot use default RK45
+    sol = solve_ivp(ode_rhs,[0, md], y_0, args=(dls, toolface), dense_output=dense_output, method='Radau')
+
+    z = None
+
+    if dense_output:
+        md_dense = np.linspace(0, md, num=int(np.ceil(md)))
+        z = sol.sol(md_dense)
+        z = z.T
+
+    return sol, z
+
 
 def ode_rhs(s, y, dls, init_toolface_angle):
     """
@@ -248,9 +265,7 @@ def ode_rhs(s, y, dls, init_toolface_angle):
     A = np.array([bit, l, lxb])
     rhs = np.array([-np.dot(l, dls*tfv), 0.0, -1/2*np.dot(l, dls*lxtfv)])
 
-    # TODO Just solve for l_s without using linalg.inv
-    B = np.linalg.inv(A)
-    l_s = np.dot(B,rhs)
+    l_s = np.linalg.solve(A, rhs)
 
     y_s[6] = l_s[0]
     y_s[7] = l_s[1]
@@ -259,11 +274,88 @@ def ode_rhs(s, y, dls, init_toolface_angle):
     return y_s
 
 
-def tfv_from_spherical_direction(inc, azi, toolface):
+def proj(u, v):
     """
-    Calculate the toolface vector from (inc, azi) direction vector.
+    Project v on u
     """
-    raise NotImplementedError
+    t = np.dot(v,u)
+    n = np.dot(u,u)
+
+    return t/n * u
+
+    
+def tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, up_n, up_e, up_t):
+    """
+    Calculate the toolface vector from bit direction and a given upwards direction
+
+    Implementation:
+
+    Create a local system based on bit orientation and provided upwards direction, 
+    calculate tfv using magnetic tfv and transform back.
+
+    Let the bit direction be positive t, then we project upward direction
+    on the bit vector to obtain the ortogonal north in a magnetic system.
+    At last, we take the cross product of these to obtain a rhs system.
+
+    In this system, toolface vector is trivially the magnetic toolface vector, which
+    we easily can compute. Thereafter, we transform back to to the provided (n,e,t)
+    system, normalize and return
+
+    """
+    if toolface < 0.0:
+        #Straight ahead
+        tfv = np.array((bit_n, bit_e, bit_t))
+    else:
+        t = np.array((bit_n, bit_e, bit_t))
+        n = np.array((up_n, up_e, up_t))
+        n = n - proj(t,n)
+        e = np.cross(t,n)
+
+        mag_n = np.cos(toolface)
+        mag_e = np.sin(toolface)
+        mag_t = 0.0
+
+        tfv_mag = np.array((mag_n, mag_e, mag_t))
+
+        A = np.array((n, e, t))
+        # B = np.linalg.inv(A)
+        # tfv = np.dot(B,tfv_mag)
+        tfv = np.linalg.solve(A, tfv_mag)
+    
+    # Return a normalized vector
+    norm = (np.dot(tfv, tfv))**(0.5)
+    assert(norm > 0)
+
+    tfv = tfv / norm
+
+    return tfv
+
+
+def tfv_from_cart_direction(bit_n, bit_e, bit_t, toolface):
+    """
+    Calculate the toolface vector from (n, e, t) bit direction
+    and toolface angle.
+
+    """
+    t_n = 0.0
+    t_e = 0.0
+    t_t = 0.0
+
+    if toolface < 0.0:
+        #Straight ahead
+        tfv = np.array((bit_n, bit_e, bit_t))
+        return tfv
+    elif abs(bit_n) + abs(bit_e) < 1e-6:
+        # Magnetic toolface, normalized by definition
+        t_n = np.cos(toolface) 
+        t_e = np.sin(toolface)
+        t_t = 0.0
+        return np.array((t_n, t_e, t_t))
+    else:
+        # Gravity toolface
+        tfv = tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, 0, 0, -1)
+
+        return tfv
 
 
 def spherical_to_net(inc, azi):
@@ -297,86 +389,33 @@ def net_to_spherical(north, east, tvd):
 
     return np.array((inc, azi))
 
-def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, dense_output=False):
-    """
-    Inner method, using Carestian co-ordinates.
-
-    Take a step of dogleg toolface method, initial position at (0, 0, 0).
-
-    Parameters:
-    -----------
-    b_n_0: Initial bit north direction
-    b_e_0: Initial bit east direction
-    b_t_0: Initial bit tvd direction
-    dls: Dogleg severity
-    tf0: Initial toolface angle
-    md: Measured depth (arc length)
-    dense_output: Provide sampling every 1th unit for plotting etc.
-
-    """
-
-    bit_norm = (b_n_0**2 + b_e_0**2 + b_t_0**2) ** (0.5)
-
-    b_n_0 = b_n_0 / bit_norm 
-    b_e_0 = b_e_0 / bit_norm 
-    b_t_0 = b_t_0 / bit_norm 
-
-    # Default to gravity reference
-    l_n_0 = 0.0
-    l_e_0 = 0.0
-    l_t_0 = -1.0
-
-    # But check it we're pointing straight up or down, then we swtich to north
-    if abs(b_e_0) + abs(b_n_0) < 1e-6:
-        l_n_0 = 1.0
-        l_e_0 = 0.0
-        l_t_0 = 0.0
-
-    y_0 = [
-        0.0 ,
-        0.0 ,
-        0.0 ,
-        b_n_0 ,
-        b_e_0 ,
-        b_t_0 ,
-        l_n_0 ,
-        l_e_0 ,
-        l_t_0 ,
-        ]
-
-    sol = solve_ivp(ode_rhs,[0, md], y_0, args=(dls, tf0), dense_output=dense_output, method='Radau')
-
-    z = None
-
-    if dense_output:
-        md_dense = np.linspace(0, md, md)
-        z = sol.sol(md_dense)
-        z = z.T
-
-    return sol, z
-
 
 if __name__ == '__main__':
-    b_n_0 = 1.0
-    b_e_0 = 1.0
-    b_t_0 = 1.0
 
-    dls = 0.002
-    md = 6400
-    tf0 = 1/8 * (2 * np.pi)
+    n_tries = 100
 
-    sol, z = dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, True)
+    # for i in range(0, n_tries):
+    #     inc0 = np.pi/2
+    #     azi0 = 0
+    #     dls = 0.002
+    #     md = 2*np.pi / dls
+    #     tf0 = np.pi/4 #2/8 * (2 * np.pi)
+
+    #     state, sol, z = dogleg_toolface(inc0, azi0, dls, tf0, md, False)
+
+    #     print(state)
+
 
     import matplotlib.pyplot as plt
-
-    # z = z[:,0:3]
-    # plt.plot(md_dense, z)
-    # print(z.shape)
-    # plt.xlabel('md')
-    # plt.legend(['north', 'east', 'tvd'], shadow=True)
-    # plt.show()
-
     from mpl_toolkits.mplot3d import Axes3D
+
+    inc0 = np.pi/3
+    azi0 = 0
+    dls = 0.002
+    md = 2*np.pi / dls
+    tf0 = np.pi/4 #2/8 * (2 * np.pi)
+
+    state, sol, z = dogleg_toolface_ode(inc0, azi0, dls, tf0, md, True)
 
     fig = plt.figure()
     ax = fig.gca(projection='3d')
