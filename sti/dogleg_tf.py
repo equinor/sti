@@ -110,7 +110,7 @@ def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md):
 
     return pos_p, bit_p
 
-def dogleg_toolface_ode(inc0, azi0, toolface, dls, md_inc, dense_output=False):
+def dogleg_toolface_ode(inc0, azi0, toolface, dls, md, dense_output=False):
     """
     Calculate position increments from a step of the dogleg
     tool face method using an ODE solver.
@@ -219,7 +219,7 @@ def dogleg_toolface_ode(inc0, azi0, toolface, dls, md_inc, dense_output=False):
 
     (b_n_0, b_e_0, b_t_0) = spherical_to_net(inc0, azi0)
     bit = (b_n_0, b_e_0, b_t_0) 
-    sol, z = dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, tf0, dls, md, dense_output)
+    sol, z = dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md, dense_output)
 
     y_end = sol.y[:,-1]
 
@@ -495,28 +495,6 @@ def net_to_spherical(north, east, tvd):
 
 
 if __name__ == '__main__':
-
-    n_tries = 100
-
-    for i in range(0, n_tries):
-        inc0 = np.pi * random()
-        azi0 = 2*np.pi * random()
-        dls = 0.002
-        md = 2*np.pi / dls * random()
-        tf0 = 2*np.pi * random()
-
-        state_circ = dogleg_toolface(inc0, azi0, tf0, dls, md)
-        state_ode, sol, z = dogleg_toolface_ode(inc0, azi0, tf0, dls, md, False)
-
-        diff = state_circ - state_ode
-        print("Diff:", sum(abs(diff)))
-        print("Cir: ",state_circ)
-        print("ODE: ",state_ode)
-        print("-------------")
-
-    print("EOF")
-
-
     # import matplotlib.pyplot as plt
     # from mpl_toolkits.mplot3d import Axes3D
 
@@ -551,3 +529,4 @@ if __name__ == '__main__':
     # state = dogleg_toolface(inc0, azi0, tf0, dls, md)
 
     # print(state)
+    pass

@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sti.dogleg_tf import dogleg_toolface, spherical_to_net, net_to_spherical
+from sti.dogleg_tf import dogleg_toolface, dogleg_toolface_ode, spherical_to_net, net_to_spherical 
 from random import random
 
 class TestDoglegToolface():
@@ -272,6 +272,22 @@ class TestDoglegToolface():
         assert data[0] == pytest.approx(0.0)
         assert data[1] == pytest.approx(0.0)
         assert data[2] == pytest.approx(0.0)
+
+    def test_compare_ode_linalg(self):
+        n_tries = 100
+
+        for i in range(0, n_tries):
+            inc0 = np.pi * random()
+            azi0 = 2*np.pi * random()
+            dls = 0.002
+            md = 2*np.pi / dls * random()
+            tf0 = 2*np.pi * random()
+
+            state_circ = dogleg_toolface(inc0, azi0, tf0, dls, md)
+            state_ode, sol, z = dogleg_toolface_ode(inc0, azi0, tf0, dls, md, False)
+
+            diff = state_circ - state_ode
+            assert sum(abs(diff)) < 1
 
 
     def test_transform(self):
