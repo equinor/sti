@@ -494,6 +494,47 @@ def net_to_spherical(north, east, tvd):
     return np.array((inc, azi))
 
 
+def get_toolface_from_states(from_state, to_state):
+    pos0 = np.array([from_state[0], from_state[1], from_state[2]]) + 100.0
+    pos1 = np.array([to_state[0], to_state[1], to_state[2]]) + 100.0
+
+    inc0 = from_state[3]
+    azi0 = from_state[4]
+
+    inc1 = to_state[3]
+    azi1 = to_state[4]
+
+    bit0 = spherical_to_net(inc0, azi0)
+    bit1 = spherical_to_net(inc1, azi1)
+
+    cos_theta = np.dot(bit0, bit1)
+    theta = np.arccos(cos_theta)
+
+    print(theta)
+
+    # If no toolface angle can be determined
+    tf = None
+
+    sin_tf = 0.0
+    cos_tf = 0.0
+
+    partial_1 = np.cos(inc0)*cos_theta - np.cos(inc1)
+    partial_2 = np.sin(inc0)*np.sin(theta)
+
+    if partial_2 != 0.0:
+        cos_tf = partial_1 / partial_2
+
+    if np.sin(theta) != 0.0:
+        sin_tf = np.sin(inc1)*np.sin(azi1-azi0) / np.sin(theta)
+
+    tf = np.arctan2(sin_tf, cos_tf)
+
+    if tf is not None and tf < 0.0:
+        tf = tf + 2*np.pi
+
+    return tf
+
+
 if __name__ == '__main__':
     # import matplotlib.pyplot as plt
     # from mpl_toolkits.mplot3d import Axes3D
@@ -520,13 +561,12 @@ if __name__ == '__main__':
 
     # plt.show()
 
-    # inc0 = np.pi/2
-    # azi0 = 0*np.pi/2
-    # dls = 0.002
-    # md = np.pi / dls
-    # tf0 = np.pi/4 #2/8 * (2 * np.pi)
+    for i in range(1, 100):
+        inc0 = np.pi/2 #np.pi * random()
+        azi0 = 0.0 #random()*2*np.pi
+        dls = 0.002
+        md =  np.pi / dls * .1 #* random()
+        tf0 = random() * 2 * np.pi
+        state = dogleg_toolface(inc0, azi0, tf0, dls, md)
 
-    # state = dogleg_toolface(inc0, azi0, tf0, dls, md)
-
-    # print(state)
     pass
