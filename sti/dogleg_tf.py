@@ -495,6 +495,14 @@ def net_to_spherical(north, east, tvd):
 
 
 def get_toolface_from_states(from_state, to_state):
+    """
+    Given a from state and to state as (n, e, t, inc, azi),
+    find the toolface angle that connects them.
+
+    * If points are on a circle, return toolface in [0, 2pi]
+    * If on a straight line, return -1.
+    * If not possible to connect the states using a circle, return None.
+    """
     pos0 = np.array([from_state[0], from_state[1], from_state[2]]) + 100.0
     pos1 = np.array([to_state[0], to_state[1], to_state[2]]) + 100.0
 
@@ -510,10 +518,36 @@ def get_toolface_from_states(from_state, to_state):
     cos_theta = np.dot(bit0, bit1)
     theta = np.arccos(cos_theta)
 
-    print(theta)
+    state_diff = sum(abs(pos1 - pos0)) + sum(abs(bit1 - bit0))
+
+    if state_diff == 0:
+        return -1
 
     # If no toolface angle can be determined
     tf = None
+
+    if cos_theta == 1.0:
+        # Possible cases:
+        # 1. Full circle on a sphere. From and to are equal. Handled above.
+        # 2. Straight line. Will handle here.
+        # 3. Step out to vertical type well. Not on a circle, tf will be None.
+
+        if sum(abs(bit1 - bit0)) == 0.0:
+        # Same direction. Can we connect a straight line?
+            pos_diff = pos1 - pos0
+            pos_norm = np.dot(pos_diff, pos_diff) ** (0.5)
+            if pos_norm == 0.0:
+                # Different orientation, same location, not possible on a circle
+                tf = None
+                return tf
+            elif np.dot(pos_diff, bit0) / pos_norm == 1.0:
+                    # On a straight line.
+                    tf = -1.0
+                    return tf
+            else:
+                # Step out to vertical type situation, not possible on a circle
+                tf = None
+                return tf
 
     sin_tf = 0.0
     cos_tf = 0.0
@@ -527,12 +561,14 @@ def get_toolface_from_states(from_state, to_state):
     if np.sin(theta) != 0.0:
         sin_tf = np.sin(inc1)*np.sin(azi1-azi0) / np.sin(theta)
 
-    tf = np.arctan2(sin_tf, cos_tf)
-
-    if tf is not None and tf < 0.0:
-        tf = tf + 2*np.pi
+    if abs(sin_tf) + abs(cos_tf) > 0.0:
+        tf = np.arctan2(sin_tf, cos_tf)
+        if tf < 0.0:
+            tf = tf + 2*np.pi
 
     return tf
+
+
 
 
 if __name__ == '__main__':
@@ -562,11 +598,46 @@ if __name__ == '__main__':
     # plt.show()
 
     for i in range(1, 100):
-        inc0 = np.pi/2 #np.pi * random()
-        azi0 = 0.0 #random()*2*np.pi
+        inc0 = np.pi * random()
+        azi0 = random()*2*np.pi
         dls = 0.002
-        md =  np.pi / dls * .1 #* random()
+        md =  np.pi / dls * random()
         tf0 = random() * 2 * np.pi
         state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+    
+        from_state = np.array([0.,0.,0., inc0, azi0])
+
+        tf_calc =get_toolface_from_states(from_state, state)
+
+        print("TF given: ", tf0)
+        print("TF calc : ", tf_calc)
 
     pass
+
+    state0 = np.array([0., 0., 0., 0., 0.])
+    # state1 = np.array([100., 100., 100., 0., 0.])
+    state1 = np.array([0., 0., 0., 0., 0.])
+
+    print("Same postion and orientation - should have -1")
+    state0 = np.array([0., 0., 0., 0., 0.])
+    state1 = np.array([0., 0., 0., 0., 0.])
+    tf_calc = get_toolface_from_states(state0, state1)
+    print(tf_calc)
+
+    print("Same postion different orientation - should have None")
+    state0 = np.array([0., 0., 0., 0., 0.])
+    state1 = np.array([0., 0., 0., 1., 0.])
+    tf_calc = get_toolface_from_states(state0, state1)
+    print(tf_calc)
+
+    print("Straight line - should have -1")
+    state0 = np.array([0., 0., 0., 0., 0.])
+    state1 = np.array([0., 0., 100., 0., 0.])
+    tf_calc = get_toolface_from_states(state0, state1)
+    print(tf_calc)
+
+    print("Step out to vertical - should have None")
+    state0 = np.array([0., 0., 0., 0., 0.])
+    state1 = np.array([100., 100., 100., 0., 0.])
+    tf_calc = get_toolface_from_states(state0, state1)
+    print(tf_calc)
