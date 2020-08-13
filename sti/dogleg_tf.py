@@ -5,7 +5,7 @@ from scipy.integrate import solve_ivp
 from random import random
 
 
-def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
+def dogleg_toolface(inc0, azi0, toolface, dls, md):
     """
     Calculate a step with the dogleg toolface method using
     linear algebra
@@ -27,6 +27,9 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
     R = 1/dls in a plane defined by the bit direction, toolface vector
     and their cross prodcuct.
 
+    Note: This method does not flip the gravity toolface, see discusion
+    in notes under dogleg_toolface_ode method.
+
     We define a co-ordinate transform that shifts and rotates the
     co-ordinate system so that the north, east plane is the circle
     plane in the physical space, and that the bit is at position
@@ -47,7 +50,7 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
     (b_n_0, b_e_0, b_t_0) = spherical_to_net(inc0, azi0)
     bit = (b_n_0, b_e_0, b_t_0) 
 
-    pos_p, bit_p = dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md)
+    pos_p, bit_p = dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md)
     inc_lower, azi_lower = net_to_spherical(bit_p[0], bit_p[1], bit_p[2])
 
     state = [
@@ -62,7 +65,7 @@ def dogleg_toolface(inc0, azi0, dls, toolface, md_inc):
 
     return state
 
-def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, toolface, md):
+def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md):
     """
     Inner magic of the linear algebra approach.
 
@@ -107,7 +110,7 @@ def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, dls, toolface, md):
 
     return pos_p, bit_p
 
-def dogleg_toolface_ode(inc0, azi0, dls, toolface, md_inc, dense_output=False):
+def dogleg_toolface_ode(inc0, azi0, toolface, dls, md_inc, dense_output=False):
     """
     Calculate position increments from a step of the dogleg
     tool face method using an ODE solver.
@@ -216,7 +219,7 @@ def dogleg_toolface_ode(inc0, azi0, dls, toolface, md_inc, dense_output=False):
 
     (b_n_0, b_e_0, b_t_0) = spherical_to_net(inc0, azi0)
     bit = (b_n_0, b_e_0, b_t_0) 
-    sol, z = dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, dls, tf0, md, dense_output)
+    sol, z = dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, tf0, dls, md, dense_output)
 
     y_end = sol.y[:,-1]
 
@@ -234,7 +237,7 @@ def dogleg_toolface_ode(inc0, azi0, dls, toolface, md_inc, dense_output=False):
     return state, sol, z
 
 
-def dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, dls, toolface, md, dense_output=False):
+def dogleg_toolface_ode_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md, dense_output=False):
     """
     Inner method, using Carestian co-ordinates.
 
@@ -493,7 +496,7 @@ def net_to_spherical(north, east, tvd):
 
 if __name__ == '__main__':
 
-    n_tries = 10000
+    n_tries = 100
 
     for i in range(0, n_tries):
         inc0 = np.pi * random()
@@ -502,14 +505,14 @@ if __name__ == '__main__':
         md = 2*np.pi / dls * random()
         tf0 = 2*np.pi * random()
 
-        state_circ = dogleg_toolface(inc0, azi0, dls, tf0, md)
-        # state_ode, sol, z = dogleg_toolface_ode(inc0, azi0, dls, tf0, md, False)
+        state_circ = dogleg_toolface(inc0, azi0, tf0, dls, md)
+        state_ode, sol, z = dogleg_toolface_ode(inc0, azi0, tf0, dls, md, False)
 
-        # diff = state_circ - state_ode
-        # print("Diff:", sum(abs(diff)))
-        # print("Cir: ",state_circ)
-        # print("ODE: ",state_ode)
-        # print("-------------")
+        diff = state_circ - state_ode
+        print("Diff:", sum(abs(diff)))
+        print("Cir: ",state_circ)
+        print("ODE: ",state_ode)
+        print("-------------")
 
     print("EOF")
 
@@ -523,7 +526,7 @@ if __name__ == '__main__':
     # md = 2*np.pi / dls
     # tf0 = np.pi/4 #2/8 * (2 * np.pi)
 
-    # state, sol, z = dogleg_toolface_ode(inc0, azi0, dls, tf0, md, True)
+    # state, sol, z = dogleg_toolface_ode(inc0, azi0, tf0, dls, md, True)
 
     # fig = plt.figure()
     # ax = fig.gca(projection='3d')
@@ -545,6 +548,6 @@ if __name__ == '__main__':
     # md = np.pi / dls
     # tf0 = np.pi/4 #2/8 * (2 * np.pi)
 
-    # state = dogleg_toolface(inc0, azi0, dls, tf0, md)
+    # state = dogleg_toolface(inc0, azi0, tf0, dls, md)
 
     # print(state)
