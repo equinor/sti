@@ -165,8 +165,8 @@ def dogleg_toolface_ode(inc0, azi0, toolface, dls, md, dense_output=False):
 
     A challenge with this system is the behaviour if we pass through
     a situation where we change from gravity -> magnetic -> gravity
-    reference of toolface, i.e. when the horizontal component of
-    bit direction is 0.
+    reference of toolface, e.g. when the horizontal component of
+    bit direction passes thorugh 0.
 
     Consider for example drilling straight north with toolface angle
     initially set at 0. This would set us up to drill a circle upwards.
@@ -461,6 +461,39 @@ def tfv_from_cart_direction(bit_n, bit_e, bit_t, toolface):
 
         return tfv
 
+def toolface_from_tfv_and_bit(tfv_n, tfv_e, tfv_t, inc, azi):
+    """
+    Calculate toolface angle from toolface vector and bit direction.
+    """
+    bit = spherical_to_net(inc, azi)
+    tfv = np.array([tfv_n, tfv_e, tfv_t])
+
+    print("yo!")
+    # Expecting tfv orto to bit and unit length
+    assert abs(np.dot(bit, tfv)) < 1e-4
+    assert abs(np.dot(tfv, tfv) - 1.0) < 1e-4
+
+    if inc==0 or inc==np.pi:
+        # Magnetic toolface
+        ref_north = np.array([1, 0, 0])
+        ref_east = np.array([0, 1, 0])
+    else:
+        # Gravity toolface
+        ref_north = np.array([0, 0, -1])
+        ref_east = np.dot(bit, ref_north)
+        ref_east = ref_east - proj(ref_north, ref_east)
+        ref_east_norm = np.dot(ref_east, ref_east) ** (0.5)
+        ref_east = ref_east / ref_east_norm
+
+    cos_tf = np.dot(ref_north, tfv)
+    sin_tf = np.dot(ref_east, tfv)
+
+    assert abs(cos_tf) + abs(sin_tf) > 0.0
+
+    toolface = np.arctan2(sin_tf, cos_tf)
+
+    return toolface
+
 
 def spherical_to_net(inc, azi):
     """ 
@@ -494,17 +527,21 @@ def net_to_spherical(north, east, tvd):
     return np.array((inc, azi))
 
 
-def get_toolface_from_states(from_state, to_state):
+def get_params_from_states(from_state, to_state):
     """
     Given a from state and to state as (n, e, t, inc, azi),
-    find the toolface angle that connects them.
+    find the toolface parameters (tf, dls, md) that connects them
+    or (None, None, np.inf) if it is not possible to connect
+    the states using the toolface dogleg method.
 
-    * If points are on a circle, return toolface in [0, 2pi]
-    * If on a straight line, return -1.
-    * If not possible to connect the states using a circle, return None.
+    For the special case of a straight line, (-1, 0, md) is returned.
     """
-    pos0 = np.array([from_state[0], from_state[1], from_state[2]]) + 100.0
-    pos1 = np.array([to_state[0], to_state[1], to_state[2]]) + 100.0
+    
+    # Precision criteria for floating comparisions
+    EPS = 1e-6
+
+    pos0 = np.array([from_state[0], from_state[1], from_state[2]])
+    pos1 = np.array([to_state[0], to_state[1], to_state[2]])
 
     inc0 = from_state[3]
     azi0 = from_state[4]
@@ -518,37 +555,90 @@ def get_toolface_from_states(from_state, to_state):
     cos_theta = np.dot(bit0, bit1)
     theta = np.arccos(cos_theta)
 
-    state_diff = sum(abs(pos1 - pos0)) + sum(abs(bit1 - bit0))
+    pos_diff = pos1 - pos0
+    pos_diff_norm = (np.dot(pos_diff, pos_diff))** (0.5)
 
-    if state_diff == 0:
-        return -1
+    bit_diff = bit1 - bit0
+    bit_diff_norm = (np.dot(bit_diff, bit_diff)) ** (0.5)
 
-    # If no toolface angle can be determined
+    state_diff_norm = pos_diff_norm + bit_diff_norm
+
+
+    # Initialize tf to None
     tf = None
 
-    if cos_theta == 1.0:
+    # Catch special case with no change.
+    # Full circle or no change. We return no change.
+    if state_diff_norm == 0.0:
+        tf = -1.0
+        dls = 0.0
+        md = 0.0
+        return np.array([tf, dls, md])
+
+    # Catch special case with different orientation, but same position
+    # Not possible
+    if pos_diff_norm < EPS and bit_diff_norm > EPS:
+            tf = None
+            dls = None
+            md = np.inf
+            return np.array([tf, dls, md])
+
+    # Catch special cases with equal bit direction
+    if abs(cos_theta -1.0) < EPS:
         # Possible cases:
-        # 1. Full circle on a sphere. From and to are equal. Handled above.
-        # 2. Straight line. Will handle here.
-        # 3. Step out to vertical type well. Not on a circle, tf will be None.
+        # 1. From and to are equal. Handled above.
+        # 2. Straight line between states.
+        # 3. Step out to vertical type well. Not on a circle.
 
-        if sum(abs(bit1 - bit0)) == 0.0:
-        # Same direction. Can we connect a straight line?
-            pos_diff = pos1 - pos0
-            pos_norm = np.dot(pos_diff, pos_diff) ** (0.5)
-            if pos_norm == 0.0:
-                # Different orientation, same location, not possible on a circle
-                tf = None
-                return tf
-            elif np.dot(pos_diff, bit0) / pos_norm == 1.0:
-                    # On a straight line.
-                    tf = -1.0
-                    return tf
-            else:
-                # Step out to vertical type situation, not possible on a circle
-                tf = None
-                return tf
+        if abs(np.dot(pos_diff, bit0) / pos_diff_norm -1) < EPS:
+            # On a straight line.
+            tf = -1.0
+            dls = 0.0
+            md = pos_diff_norm
+            return np.array([tf, dls, md])
+        else:
+            # Step out to vertical type situation, not possible on a circle
+            tf = None
+            dls = None
+            md = np.inf
+            return np.array([tf, dls, md])
 
+    
+    # Catch special cases with opposite bit directions
+    if abs(cos_theta + 1.0) < EPS:
+        # Possible cases:
+        # 1. Straight line, opposite orientation. Not on a circle
+        # 2. J-bend well. Not on a circle.
+        # 3. Half-way around a circle.
+        # Only case 3 is premissible, and this is characterized by
+        # the position difference being ortogonal on the bit directions.
+
+        if abs(np.dot(pos_diff, bit0)) > EPS:
+                tf = None
+                dls = None
+                md = np.inf
+                return np.array([tf, dls, md])
+    
+    # Catch special cases with ortogonal bit directions
+    if abs(cos_theta) < EPS:
+        # Possible cases:
+        # 1. Around a circle, 1/4th or 3/4th of the way.
+        # 2. Bottom position of a J-type well. Not on a circle.
+        # Only case 1 is on a circle. Characterized by that the
+        # angle between the position difference and any of the 
+        # bit directions is pi/2 ... and?
+
+        pos_diff_unit = pos_diff / pos_diff_norm
+
+        if abs(abs(np.dot(pos_diff_unit, bit0)) - np.cos(np.pi/4)) > EPS:
+                tf = None
+                dls = None
+                md = np.inf
+                return np.array([tf, dls, md])
+        
+
+    # From here we assume all the special cases have been caugth
+    # Calculate tool face
     sin_tf = 0.0
     cos_tf = 0.0
 
@@ -561,83 +651,98 @@ def get_toolface_from_states(from_state, to_state):
     if np.sin(theta) != 0.0:
         sin_tf = np.sin(inc1)*np.sin(azi1-azi0) / np.sin(theta)
 
-    if abs(sin_tf) + abs(cos_tf) > 0.0:
+    if abs(sin_tf) + abs(cos_tf) > EPS:
+        # Can use arctan to determine tf in [0, 2*pi]
         tf = np.arctan2(sin_tf, cos_tf)
         if tf < 0.0:
             tf = tf + 2*np.pi
+    else:
+    # We've drilled in a half circle. The toolface vector
+    # in the start point is directly proportional to the
+    # difference between the start and end point
+        tfv = pos_diff / pos_diff_norm
+        tfv = tfv - proj(bit0, tfv)
+        tfv_norm = np.dot(tfv, tfv) ** (0.5)
+        assert tfv_norm > 0.0
+        tfv = tfv / tfv_norm
 
-    return tf
+        tf = toolface_from_tfv_and_bit(tfv[0] ,tfv[1], tfv[2], inc0, azi0)
+        
+    
+    
+    # Calculate radius and dls using chord length. 
+    # Assuming that special cases have been handled above.
+    assert pos_diff_norm > 0.0
+    assert np.sin(theta/2) != 0.0
 
+    r = pos_diff_norm / (2 * np.sin(theta/2))
+    dls = 1/r
 
+    # For md step, we have two possibilities:
+    # 1. r * theta
+    # 2. r * (2*pi - theta) 
+    # This is so since theta is the shortest arc between the
+    # points, but we need to take orientation into account
+    #
+    # Also, the trigonometric wizardry above breaks down
+    # and given wrong tf when theta is above pi. Need to correct
+    # that as well
+
+    md1 = r * theta
+    md2 = r * (2*np.pi - theta)
+
+    tf2 = tf + np.pi
+
+    state_r1 = dogleg_toolface(inc0, azi0, tf, dls, md1)
+    state_r2 = dogleg_toolface(inc0, azi0, tf, dls, md2)
+    state_r3 = dogleg_toolface(inc0, azi0, tf2, dls, md1)
+    state_r4 = dogleg_toolface(inc0, azi0, tf2, dls, md2)
+
+    pos_r1 = np.array([state_r1[0], state_r1[1], state_r1[2]])
+    pos_r2 = np.array([state_r2[0], state_r2[1], state_r2[2]])
+    pos_r3 = np.array([state_r3[0], state_r3[1], state_r3[2]])
+    pos_r4 = np.array([state_r4[0], state_r4[1], state_r4[2]])
+
+    diff_1 = sum(abs(pos_r1 - pos_diff))
+    diff_2 = sum(abs(pos_r2 - pos_diff))
+    diff_3 = sum(abs(pos_r3 - pos_diff))
+    diff_4 = sum(abs(pos_r4 - pos_diff))
+
+    md = 0.0
+    if diff_1 < 1e-3:
+        md = md1
+    elif diff_2 < 1e-3:
+        md = md2
+    elif diff_3 < 1e-3:
+        md = md1
+        tf = tf2
+    elif diff_4 < 1e-4:
+        md = md2
+        tf = tf2
+    else:
+        raise AssertionError
+
+    if tf > 2*np.pi:
+        tf = tf - 2*np.pi
+
+    return np.array([tf, dls, md])
 
 
 if __name__ == '__main__':
-    # import matplotlib.pyplot as plt
-    # from mpl_toolkits.mplot3d import Axes3D
 
-    # inc0 = np.pi/3
-    # azi0 = 0
-    # dls = 0.002
-    # md = 2*np.pi / dls
-    # tf0 = np.pi/4 #2/8 * (2 * np.pi)
 
-    # state, sol, z = dogleg_toolface_ode(inc0, azi0, tf0, dls, md, True)
-
-    # fig = plt.figure()
-    # ax = fig.gca(projection='3d')
-    # x = z[:,0].flatten()
-    # y = z[:,1].flatten()
-    # z = z[:,2].flatten()
-
-    # ax.plot(x, y, z)
-
-    # ax.set_xlabel('North')
-    # ax.set_ylabel('East')
-    # ax.set_zlabel('TVD')
-
-    # plt.show()
-
-    for i in range(1, 100):
+    for i in range(1, 1000):
         inc0 = np.pi * random()
         azi0 = random()*2*np.pi
-        dls = 0.002
-        md =  np.pi / dls * random()
+        dls = 0.001 + 0.004 * random()
+        md =  2*np.pi * 3/4 * 1/dls + 2*np.pi * 1/4 * random()
         tf0 = random() * 2 * np.pi
-        state = dogleg_toolface(inc0, azi0, tf0, dls, md)
-    
+
         from_state = np.array([0.,0.,0., inc0, azi0])
+        to_state = dogleg_toolface(inc0, azi0, tf0, dls, md)
 
-        tf_calc =get_toolface_from_states(from_state, state)
+        print("Params given. TF: ", tf0, " dls: ", dls, " md: ", md)
 
-        print("TF given: ", tf0)
-        print("TF calc : ", tf_calc)
+        tf_calc, dls_calc, md_calc = get_params_from_states(from_state, to_state)
 
-    pass
-
-    state0 = np.array([0., 0., 0., 0., 0.])
-    # state1 = np.array([100., 100., 100., 0., 0.])
-    state1 = np.array([0., 0., 0., 0., 0.])
-
-    print("Same postion and orientation - should have -1")
-    state0 = np.array([0., 0., 0., 0., 0.])
-    state1 = np.array([0., 0., 0., 0., 0.])
-    tf_calc = get_toolface_from_states(state0, state1)
-    print(tf_calc)
-
-    print("Same postion different orientation - should have None")
-    state0 = np.array([0., 0., 0., 0., 0.])
-    state1 = np.array([0., 0., 0., 1., 0.])
-    tf_calc = get_toolface_from_states(state0, state1)
-    print(tf_calc)
-
-    print("Straight line - should have -1")
-    state0 = np.array([0., 0., 0., 0., 0.])
-    state1 = np.array([0., 0., 100., 0., 0.])
-    tf_calc = get_toolface_from_states(state0, state1)
-    print(tf_calc)
-
-    print("Step out to vertical - should have None")
-    state0 = np.array([0., 0., 0., 0., 0.])
-    state1 = np.array([100., 100., 100., 0., 0.])
-    tf_calc = get_toolface_from_states(state0, state1)
-    print(tf_calc)
+        print("Params calc. TF: ", tf_calc, " dls: ", dls_calc, " md: ", md_calc)

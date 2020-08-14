@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sti.dogleg_tf import dogleg_toolface, dogleg_toolface_ode, spherical_to_net, net_to_spherical 
+from sti.dogleg_tf import dogleg_toolface, dogleg_toolface_ode, spherical_to_net, net_to_spherical , get_params_from_states
 from random import random
 
 class TestDoglegToolface():
@@ -274,7 +274,7 @@ class TestDoglegToolface():
         assert data[2] == pytest.approx(0.0)
 
     def test_compare_ode_linalg(self):
-        n_tries = 100
+        n_tries = 5
 
         for i in range(0, n_tries):
             inc0 = np.pi * random()
@@ -311,3 +311,72 @@ class TestDoglegToolface():
 
             if norm > 1e-4:
                 print(norm)
+
+    def test_get_params_from_state_random(self):
+        for i in range(1, 1000):
+            inc0 = np.pi * random()
+            azi0 = random()*2*np.pi
+            dls = 0.001 + 0.004 * random()
+            md =  2*np.pi / dls * random()
+            tf0 = random() * 2 * np.pi
+            state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+        
+            from_state = np.array([0.,0.,0., inc0, azi0])
+
+            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, state)
+
+            assert tf_calc == pytest.approx(tf0)
+            assert dls_calc == pytest.approx(dls)
+            assert md_calc == pytest.approx(md)
+
+    def test_get_params_from_state_lines(self):
+
+        for i in range(1, 100):
+            inc0 = np.pi * random()
+            azi0 = random()*2*np.pi
+            dls = 0.0
+            md =  1000 * random()
+            tf0 = -1
+            state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+        
+            from_state = np.array([0.,0.,0., inc0, azi0])
+
+            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, state)
+
+            assert tf_calc == pytest.approx(tf0)
+            assert dls_calc == pytest.approx(dls)
+            assert md_calc == pytest.approx(md)
+
+    def test_get_params_from_state_quarter_circle(self):
+        for i in range(1, 1000):
+            inc0 = np.pi * random()
+            azi0 = random()*2*np.pi
+            dls = 0.001 + 0.004 * random()
+            md =  2*np.pi * 1/4 * 1/dls
+            tf0 = random() * 2 * np.pi
+            state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+        
+            from_state = np.array([0.,0.,0., inc0, azi0])
+
+            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, state)
+
+            assert tf_calc == pytest.approx(tf0)
+            assert dls_calc == pytest.approx(dls)
+            assert md_calc == pytest.approx(md)
+
+    def test_get_params_from_state_three_quarter_circle(self):
+        for i in range(1, 1000):
+            inc0 = np.pi * random()
+            azi0 = random()*2*np.pi
+            dls = 0.001 + 0.004 * random()
+            md =  2*np.pi * 3/4 * 1/dls
+            tf0 = random() * 2 * np.pi
+            state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+        
+            from_state = np.array([0.,0.,0., inc0, azi0])
+
+            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, state)
+
+            assert tf_calc == pytest.approx(tf0)
+            assert dls_calc == pytest.approx(dls)
+            assert md_calc == pytest.approx(md)
