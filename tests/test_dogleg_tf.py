@@ -265,10 +265,6 @@ class TestDoglegToolface():
         r = 1/dls
         data = dogleg_toolface(np.pi/2, 0., 2*np.pi*3/4, dls, 2*np.pi*r)
 
-        print("n: ", data[0])
-        print("e: ", data[1])
-        print("t: ", data[2])
-
         assert data[0] == pytest.approx(0.0)
         assert data[1] == pytest.approx(0.0)
         assert data[2] == pytest.approx(0.0)
@@ -319,11 +315,19 @@ class TestDoglegToolface():
             dls = 0.001 + 0.004 * random()
             md =  2*np.pi / dls * random()
             tf0 = random() * 2 * np.pi
-            state = dogleg_toolface(inc0, azi0, tf0, dls, md)
-        
-            from_state = np.array([0.,0.,0., inc0, azi0])
 
-            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, state)
+            north = -2000 + 4000 * random()
+            east = -2000 + 4000 * random()
+            tvd = -2000 + 4000 * random()
+        
+            from_state = np.array([north, east, tvd, inc0, azi0])
+            to_state = dogleg_toolface(inc0, azi0, tf0, dls, md)
+
+            to_state[0] = to_state[0] + north
+            to_state[1] = to_state[1] + east 
+            to_state[2] = to_state[2] + tvd
+
+            tf_calc, dls_calc, md_calc = get_params_from_states(from_state, to_state)
 
             assert tf_calc == pytest.approx(tf0)
             assert dls_calc == pytest.approx(dls)

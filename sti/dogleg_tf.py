@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
-# QC
 from random import random
 
 
@@ -20,6 +19,7 @@ def dogleg_toolface(inc0, azi0, toolface, dls, md):
 
     Returns:
     state: array of (north, east, tvd, inc_lower, azi_lower)
+
 
     Implementation
 
@@ -716,7 +716,7 @@ def get_params_from_states(from_state, to_state):
     elif diff_3 < 1e-3:
         md = md1
         tf = tf2
-    elif diff_4 < 1e-4:
+    elif diff_4 < 1e-3:
         md = md2
         tf = tf2
     else:
@@ -729,20 +729,4 @@ def get_params_from_states(from_state, to_state):
 
 
 if __name__ == '__main__':
-
-
-    for i in range(1, 1000):
-        inc0 = np.pi * random()
-        azi0 = random()*2*np.pi
-        dls = 0.001 + 0.004 * random()
-        md =  2*np.pi * 3/4 * 1/dls + 2*np.pi * 1/4 * random()
-        tf0 = random() * 2 * np.pi
-
-        from_state = np.array([0.,0.,0., inc0, azi0])
-        to_state = dogleg_toolface(inc0, azi0, tf0, dls, md)
-
-        print("Params given. TF: ", tf0, " dls: ", dls, " md: ", md)
-
-        tf_calc, dls_calc, md_calc = get_params_from_states(from_state, to_state)
-
-        print("Params calc. TF: ", tf_calc, " dls: ", dls_calc, " md: ", md_calc)
+    pass
