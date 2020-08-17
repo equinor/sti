@@ -1,340 +1,194 @@
 import numpy as np
 from scipy.optimize import minimize, Bounds, dual_annealing#, NonlinearConstraint
-from sti.dogleg_tf import dogleg_toolface
+from sti.dogleg_tf import dogleg_toolface, get_params_from_state_and_net
 
-# For loading a linear model for guessworking
-import pickle
-import os
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.pipeline import Pipeline
-
-# For QC toolface method
-import matplotlib.pyplot as plt
+# QC 
 from random import random
 
 """
-Given a start and end state in a space of (north, east, tvd, inc, azi),
-and a dog leg severity (dls) limit, sti is a set of three (toolface, dls, md) tuplets
-that connect connect the start and end state with a trajectory as short as possible
-within the dls limit.
-
-The code is intentionally very low level, to attempt using automatic differentation.
-
-The sti data is for efficiency reason passed around as a numpy array, layed out as follows:
-[tf0, tf1, tf2, dls0, dls1, dls2, md_inc0, md_inc1, md_inc2]
-
-State data is layed out as follows, again for effciency reasons:
-[north, east, tvd, inc, azi]
 """
 
-def faststi(start_state, target_state, dls_limit=0.002, tol=1e-3, scale_md=100, md_weight=1/1000):
+def find_sti(start_state, target_state, dls_limit, scale_md):
     """ Fit a sti from start_state to target_state """
+
     VERBOSE = True
     METHOD = 'L-BFGS-B'
-    # METHOD = 'trust-constr'
+    DLS_EPS = 1e-2 # Proceed to global optimiziation if overriding dls limit this much
+    INC_EPS = 1e-1 # Prooced to global opt. if azi error is larger (0.1 ~ 5 degrees)
+    AZI_EPS = 1e-1 # Prooced to global opt. if inc error is larger (0.1 ~ 5 degrees)
 
-    # Bounds
-    lb, ub = __get_sti_bounds(dls_limit)
-    bounds = Bounds(lb, ub, keep_feasible=True)
-    
-    # Objective for first global optimization
-    of_feas = __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight)
+    acceptable_solution = False
+
+    x0 = initial_guess(start_state, target_state, dls_limit)
+    lb, ub = get_bounds(start_state, target_state)
+    bounds = Bounds(lb, ub)
+
+    objective_function = get_objective_function(start_state, target_state,dls_limit, scale_md)
 
     if VERBOSE:
-        print("\nInitializing problem.")
-        print("\nAttempting model prediction & local optimization.")
-    # First attempt to fit with L-BFGS-B if the problem is simple.
-    # Seems to work only for straight lines
-    x0 = __inital_guess(start_state, target_state, dls_limit)
+        print("Performing gradient based optimization.")
 
-    of_precond = __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, md_weight)
-    result = minimize(of_precond, x0, bounds=bounds, method=METHOD) #, options={'iprint': 0})
-
-    x0 = result.x
-    result = minimize(of_feas, x0, bounds=bounds, method=METHOD)#, options={'iprint': 0, 'ftol' : np.finfo(float).eps})
-
+    result = minimize(objective_function, x0, bounds=bounds, method=METHOD)#, options={'iprint': 99})
     sti = result.x
-    projection, dls = project_sti(start_state, sti)
-    err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
 
-    if(err > 0.1):
+    md, dls_mis, inc_err, azi_err = get_error_estimates(start_state, target_state, dls_limit, scale_md, sti)
+
+    qc_vals = [dls_mis < DLS_EPS, (inc_err) ** (0.5) < INC_EPS, (azi_err) ** (0.5) < AZI_EPS]
+    # Global optimization if not accepted error
+    if not all(qc_vals):
         if VERBOSE:
-            print("Error above threshold. Proceeding to global optimization")
-        bounds_list = list(zip(lb, ub))
+            print("Result not acceptable. Performing global optimization.")
+            print("QC DLS, INC, AZI: ", qc_vals)
 
-        result = dual_annealing(of_feas, bounds_list)
+        result = dual_annealing(objective_function, bounds=list(zip(lb, ub)))
         sti = result.x
 
-        projection, dls = project_sti(start_state, sti)
-        err = __err_squared_state_mismatch(target_state, projection, dls_limit, scale_md)
-        if VERBOSE:
-            print("Final error: ", err)
+        qc_vals = [dls_mis < DLS_EPS, (inc_err) ** (0.5) < INC_EPS, (azi_err) ** (0.5) < AZI_EPS]
 
 
-    # TODO 'trust-constr' method is broken when using numdiff in current scipy, below code will not work
-    # # # Local fine tuning
-    # x0 = __truncate_to_bounds(sti, lb, ub, 1e-1)
+        if not all(qc_vals):
+            acceptable_solution = False
+            if VERBOSE:
+                print("Result not acceptable - options exhausted. Beware.")
+                print("QC DLS, INC, AZI: ", qc_vals)
+        else:
+            acceptable_solution = True
+    else:
+        acceptable_solution = True
 
-    # of_min = __get_optifuns_min_length(scale_md)
-    # nlc = __get_non_linear_constraint(start_state, target_state, dls_limit,scale_md, tol)
+    return sti, acceptable_solution
+    
 
-    # result = minimize(of_min, x0, method='trust-constr', bounds=bounds, constraints=nlc, options={'verbose':1})
-    # sti = result.x
 
-    return sti, err
+def get_objective_function(start_state, target_state, dls_limit, scale_md):
+
+    def objective_function(sti):
+        WEIGHT_DLS = 1000
+        WEIGHT_INC = 10000
+        WEIGHT_AZI = 10000
+        md, dls_mis, inc_err, azi_err = get_error_estimates(start_state, target_state, dls_limit, scale_md, sti)
+        of_val = (md/scale_md) ** 2 + (WEIGHT_DLS * dls_mis / dls_limit) ** 2 + WEIGHT_INC * inc_err + WEIGHT_AZI * azi_err
+        return of_val
+
+    return objective_function
+
+
+def get_error_estimates(start_state, target_state, dls_limit, scale_md, sti):
+
+    projected_state, dls, md = project_sti(start_state, sti)
+
+    inc_err = (target_state[3] - projected_state[3])**2
+    azi_err = (target_state[4] - projected_state[4])**2
+
+    dls_mis = max(0, dls - dls_limit)
+
+    return md, dls_mis, inc_err, azi_err
+
 
 
 def project_sti(start_state, sti):
-    """ Project the sti using star_state as root"""
-   
-    if(np.any(sti[6:9] <= 1e-5)):
-        raise ValueError("All md increments must be positive.")
 
-    # Ugly, but hopefully fast and auto-differentiable
-    state0 = dogleg_toolface(start_state[3], start_state[4], sti[0], sti[3], sti[6])
-    state1 = dogleg_toolface(     state0[3],      state0[4], sti[1], sti[4], sti[7])
-    state2 = dogleg_toolface(     state1[3],      state1[4], sti[2], sti[5], sti[8])
-
-    p_n = start_state[0] + state0[0] + state1[0] + state2[0]
-    p_e = start_state[1] + state0[1] + state1[1] + state2[1]
-    p_t = start_state[2] + state0[2] + state1[2] + state2[2]
-
-    p_inc = state2[3]
-    p_azi = state2[4]
-
-    dls = np.array([sti[3], sti[4], sti[5]])
-
-    return (p_n, p_e, p_t, p_inc, p_azi), dls
-
-
-def __inital_guess(state_from, state_to, dls_limit, linear_model=True):
-    """ Produce an inital guess. Will try to use a linear model if available."""
-
-    # TODO Should keep the model in memory between runs. Refactor me.
-    # if linear_model is True:
-    #     # Try first using a linear model from previous runs
-    #     # TODO Improve me, this is not exactly beautiful
-    #     lm_file = 'linear-mod.sav'
-    #     basedir = os.path.abspath(__file__)
-    #     basedir = os.path.dirname(basedir) 
-    #     pickled_lm_file = os.path.join(basedir,'../models/', lm_file)
-    #     pickled_lm_file = os.path.normpath(pickled_lm_file)
-
-    #     print("Using linear model to initialize optimization.")
-    #     reg_mod = pickle.load(open(pickled_lm_file, 'rb'))
-    #     reg_x = np.append(state_from, state_to).flatten()
-    #     reg_sti = reg_mod.predict(reg_x.reshape(1, -1)).flatten()
-    #     x0 = reg_sti
-    # else:
-    #     # We'll need to guess, pure black magic...
-
-    dnorth = state_to[0] - state_from[0]
-    deast = state_to[1] - state_from[1]
-    dtvd = state_to[2] - state_from[2]
-
-    r = (dnorth**2 + deast**2 + dtvd**2)**(0.5)
-
-    # inc_f = state_from[3]
-    # inc_t = state_to[3]
-    # azi_f = state_from[4]
-    # azi_t = state_to[4]
-
-    # azi_m = azi_t 
-
-    # if deast !=0 and dnorth ==0:
-    #     if deast > 0:
-    #         azi_m = np.pi /2
-    #     else:
-    #         azi_m = 2*np.pi*3/4
+    # HACK Just thorwing something on the wall here to see if the 
+    # new approach using intermediate points is better
     
-    # inc_m = np.arccos(dtvd / r)
+    # Intermediate (north, east, tvd)
+    intermed_net0 = sti[0:3]
+    intermed_net1 = sti[3:6]
 
-    # if dnorth != 0:
-    #     azi_m = np.arctan(deast/dnorth)
+    # Find parameters from start to first intermediate point
+    tf0, dls0, md0 = get_params_from_state_and_net(start_state, intermed_net0)
+    intermed_state0 = dogleg_toolface(start_state[3], start_state[4], tf0, dls0, md0)
 
-    # IDEA 
-    # Assume that we'll always get a rotated system so we're starting at
-    # (0,0,0,0)
-    # Use the first leg to point towards the target in the horizontal plane
-    # Use the second leg to adjust to target in depth and orientation
-    # Use the thirs leg to adjust 
+    # Dogleg toolface returns increments
+    intermed_state0[0] = intermed_state0[0] + start_state[0]
+    intermed_state0[1] = intermed_state0[1] + start_state[1]
+    intermed_state0[2] = intermed_state0[2] + start_state[2]
 
-    # x0 = np.array([inc_m/2, inc_m, inc_t, azi_m/2, azi_m, azi_t, r/3, r/3, r/3])
-    x0 = np.array([np.pi/2., np.pi/2, np.pi/2, dls_limit/2, dls_limit/2, dls_limit/2, r/3, r/3, r/3])
+    # Find paramters between intermediate states
+    tf1, dls1, md1 = get_params_from_state_and_net(intermed_state0, intermed_net1)
+    intermed_state1 = dogleg_toolface(intermed_state0[3], intermed_state0[4], tf1, dls1, md1)
 
-    return x0 
+    # Dogleg toolface returns increments
+    intermed_state1[0] = intermed_state1[0]  + intermed_state0[0]
+    intermed_state1[1] = intermed_state1[1]  + intermed_state0[1]
+    intermed_state1[2] = intermed_state1[2]  + intermed_state0[2]
 
+    # Find paramters between intermediate states
+    final_net = target_state[0:3]
+    tf2, dls2, md2 = get_params_from_state_and_net(intermed_state1, final_net)
 
-def __truncate_to_bounds(sti, lb, ub, eps=0):
-     # Truncate small negative violations from scipy optimize
-     # eps is a workaround for https://github.com/scipy/scipy/issues/11403
-     tsti = np.maximum(sti, lb + eps)
-     tsti = np.minimum(tsti, ub - eps)
-     return tsti
-    
-def __err_squared_pos_mismatch(state1, state2, scale_md):
-    """ Error in bit position without consideration for orientation. """
-    d2north = (state1[0] - state2[0])**2 
-    d2east = (state1[1] - state2[1])**2
-    d2tvd = (state1[2] - state2[2])**2
+    # Max dls and total md
+    max_dls = max(dls0, dls1, dls2)
+    md = md0 + md1 + md2
 
-    terr = (d2north + d2east + d2tvd) / (scale_md**2)
+    # Projected state
+    projected_state = dogleg_toolface(intermed_state1[3], intermed_state1[4], tf2, dls2, md2)
 
-    return terr
+    # Dogleg toolface returns increments
+    projected_state[0] = projected_state[0]  + intermed_state1[0]
+    projected_state[1] = projected_state[1]  + intermed_state1[1]
+    projected_state[2] = projected_state[2]  + intermed_state1[2]
 
-
-def __err_squared_orient_mismatch(state1, state2, dls_limit):
-    """ Error in bit orientation without consideration for position. """
-    d2inc = (state1[3] - state2[3])**2 / (dls_limit**2)
-    d2azi = (state1[4] - state2[4])**2 / (dls_limit**2)
-
-    # If abs(dazi) > pi, dazi is not minimal. Correct it.
-    dazi = abs(state1[4] - state2[4])
-    if dazi > np.pi:
-        dazi = 2*np.pi - dazi
-        
-    d2azi = dazi**2 / (dls_limit**2)
-    terr = d2inc + d2azi
-
-    return terr
+    return projected_state, max_dls, md 
 
 
-def __err_squared_state_mismatch(state1, state2, dls_limit, scale_md):
-    """ Error in position and orientation"""
-    perr = __err_squared_pos_mismatch(state1, state2, scale_md)
-    oerr = __err_squared_orient_mismatch(state1, state2, dls_limit)
-
-    return perr + oerr
-
-
-def __err_tot_md_sq(sti, scale_md):
-    md = (sti[6] + sti[7] + sti[8]) / scale_md
-    return md**2
-
-
-def __get_optifuns_precondition(start_state, target_state, dls_limit, scale_md, md_weight):
-    """ Simpler objective function.
-
-        To be used as a preconditioner to find an initial guess before proceeding to global
-        optimization. Position is weighted more than orientation, length and dls.
-    """
-
-    def of_precondition(sti):
-        WEIGHT_POS = 1.0
-        WEIGHT_ORI = 0.0
-        WEIGHT_MD  = 0.0
-
-        projected_state, dls = project_sti(start_state, sti)
-
-        sq_pos_err = __err_squared_pos_mismatch(projected_state, target_state, scale_md)
-        sq_ori_err = __err_squared_orient_mismatch(projected_state, target_state, dls_limit)
-        sq_tot_md_err = __err_tot_md_sq(sti, scale_md)
-
-        terr = WEIGHT_POS*sq_pos_err + WEIGHT_ORI*sq_ori_err + WEIGHT_MD*sq_tot_md_err
-
-        return terr
-
-    return of_precondition
-
-def __get_optifuns_feasibility(start_state, target_state, dls_limit, scale_md, md_weight):
-
-    def of_feasibility(sti):
-        projected_state, dls = project_sti(start_state, sti)
-
-        sq_state_err = __err_squared_state_mismatch(projected_state, target_state, dls_limit, scale_md)
-        sq_tot_md_err = __err_tot_md_sq(sti, scale_md)
-
-        # Additional term that penalizes solution that are much longer in md
-        # the the approximate distance from start to target.
-        # 
-        # This is to try to avoid very creative solutions by global optimisers
-
-        # Note, we use scale MD = 1 to compare directly with the sti total md
-        app_dist = (__err_squared_state_mismatch(start_state, projected_state, dls_limit=dls_limit, scale_md=1))**(0.5)
-        md = sti[6] + sti[7] + sti[8]
-
-        sq_dist_err = (max(md, 2*app_dist) - 2*app_dist)**2
-
-        return sq_state_err +  sq_tot_md_err * md_weight + sq_dist_err
-
-    return of_feasibility
-
-
-def __get_optifuns_min_length(scale_md):
-    def of_len(sti):
-        return __err_tot_md_sq(sti, scale_md)
-    
-    return of_len
-
-
-# def __get_non_linear_constraint(start_state, target_state, dls_limit, scale_md, tol, keep_feasible=False):
-#     def nlc_fun(sti):
-#         projected_state, dls = project_sti(start_state, sti)
-#         sq_state_err = __err_squared_state_mismatch(projected_state, target_state, dls_limit, scale_md)
-        
-#         # Super explict, hoping for autodiff
-#         return (dls[0], dls[1], dls[2], sq_state_err)
-    
-#     nlc_lb = np.array([-np.inf]*4)
-#     nlc_ub = np.array([dls_limit]*3)
-#     nlc_ub = np.append(nlc_ub, tol**2).flatten()
-    
-#     nlc = NonlinearConstraint(nlc_fun, nlc_lb, nlc_ub, keep_feasible=keep_feasible)
-
-#     return nlc
-
-
-def __get_sti_bounds(dls_limit):
-    """ Bounds on free variables. Super explicit in hope of JAX compatibility."""
-    min_md = 1. 
-    max_md = 10000.
-
-    dls_low = 1e-6
-
-    lb = np.array([0., 0., 0., dls_low, dls_low, dls_low, min_md, min_md, min_md])
-    ub = np.array([2*np.pi, 2*np.pi, 2*np.pi, dls_limit, dls_limit, dls_limit, max_md, max_md, max_md])
-
-    assert(len(ub) == 9)
-    assert(len(lb) == 9)
+def get_bounds(start_state, target_state):
+    # HACK Just throwing in some temporary stuff. But seems to work fine,
+    # and performance is not super senstive (tried with stricter bounds)
+    lb = np.array([-1.0e4]*6)
+    ub = np.array([1.0e4]*6)
 
     return lb, ub
 
 
-def min_curve_segment(inc_upper, azi_upper, inc_lower, azi_lower, md_inc):
-    """Inner workhorse, designed for auto differentiability."""
-    # Stolen from wellpathpy
-    cos_inc = np.cos(inc_lower - inc_upper)
-    sin_inc = np.sin(inc_upper) * np.sin(inc_lower)
-    cos_azi = 1 - np.cos(azi_lower - azi_upper)
+def initial_guess(start_state, target_state, dls_limit):
+    # Dummy approach, just put two points betweeen start and end
 
-    dogleg = np.arccos(cos_inc - (sin_inc * cos_azi))
+    dn = target_state[0] - start_state[0]
+    de = target_state[1] - start_state[1]
+    dt = target_state[2] - start_state[2]
 
-    # ratio factor, correct for dogleg == 0 values
-    if np.isclose(dogleg, 0.):
-        dogleg = 0
-        rf = 1
-    else:
-        rf = 2 / dogleg * np.tan(dogleg / 2)
-    
-    # delta northing
-    upper = np.sin(inc_upper) * np.cos(azi_upper)
-    lower = np.sin(inc_lower) * np.cos(azi_lower)
-    dnorth = md_inc / 2 * (upper + lower) * rf
-    
-    # delta easting
-    upper = np.sin(inc_upper) * np.sin(azi_upper)
-    lower = np.sin(inc_lower) * np.sin(azi_lower)
-    deast = md_inc / 2 * (upper + lower) * rf
+    n0 = start_state[0]
+    e0 = start_state[1]
+    t0 = start_state[2]
 
-    # delta tvd
-    dtvd = md_inc / 2 * (np.cos(inc_upper) + np.cos(inc_lower)) *rf
+    intermed0 = np.array([n0 + dn/3, e0 + de/3, t0 + dt/3])
+    intermed1 = np.array([n0 + 2*dn/3, e0 + 2*de/3, t0 + 2*dt/3])
 
-    dls = dogleg / md_inc
+    sti = np.append(intermed0, intermed1).flatten()
 
-    # Small sanity check
-    # r = (dnorth**2 + deast**2 +dtvd**2) **0.5
-    # assert 
-    print(dnorth, deast, dtvd, dls)
+    return sti
 
-    return dnorth, deast, dtvd, dls
+if __name__ == '__main__':
+
+    for i in range(0, 100):
+        start_state = np.array([0., 0., 0., 0., 0.])
+
+        north = (-1 + 2*random()) * 3000
+        east = (-1 + 2*random()) * 3000
+        tvd = (-1 + 2*random()) * 3000
+
+        inc = np.pi * random()
+        azi = 2*np.pi * random()
+
+        # north = 0.0
+        # east = 0.0
+        # tvd = 100.0
+
+        # inc = np.pi / 2
+        # azi =0.0
+
+        dls = 0.002
+        scale_md = 3000
+
+        target_state = np.array([north, east, tvd, inc, azi])
+
+        sti, acceptable = find_sti(start_state, target_state, dls, scale_md)
+
+        projected_state, dls, md = project_sti(start_state, sti)
+
+
+        print("Target: ", target_state)
+        print("Projected: ", projected_state)
+        print("MD: ", md)
+        print("DLS: ", dls)
