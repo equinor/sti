@@ -41,7 +41,7 @@ def create_training_data(n_points):
     """
 
     filename = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = "data/" + filename + ".csv"
+    filename = "data/raw/" + filename + ".csv"
     
     with open(filename,'x') as file:
         headers = __get_header()
