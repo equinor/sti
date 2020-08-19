@@ -1,7 +1,20 @@
 import numpy as np
 from scipy.integrate import solve_ivp
+from sti.utils import proj, l2norm, normalize, orthogonalize, pos_from_state,\
+                          cart_bit_from_state, spherical_to_net, net_to_spherical
 
-from random import random
+# TODO
+#
+# This works for now, but has a bit of C/Matlab style to it.
+#
+# Would benefit from defining a handful of key datatypes to pass
+# around, rather than using scalars and building vectors inside functions
+# left and right.
+#
+# Key datatypes:
+#
+# Direction, position, dogleg toolface parameters, state (position & direction).
+
 
 
 def dogleg_toolface(inc0, azi0, toolface, dls, md):
@@ -65,6 +78,7 @@ def dogleg_toolface(inc0, azi0, toolface, dls, md):
 
     return state
 
+
 def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md):
     """
     Inner magic of the linear algebra approach.
@@ -90,12 +104,8 @@ def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md):
         ax_east = bit
         ax_tvd = np.cross(ax_north, ax_east) 
 
+        # Centre of circle
         translation = R*tfv
-
-        # Ensure unit vectors, should be OK from calling scope
-        # assert( np.dot(ax_north, ax_north) == 1.0)
-        # assert( np.dot(ax_east, ax_east) == 1.0)
-        # assert( np.dot(ax_tvd, ax_tvd) == 1.0)
 
         # Build transform matrix
         A = np.array([ax_north, ax_east, ax_tvd])
@@ -109,6 +119,7 @@ def dogleg_toolface_inner(b_n_0, b_e_0, b_t_0, toolface, dls, md):
         bit_p = np.linalg.solve(A, bit_ax)
 
     return pos_p, bit_p
+
 
 def dogleg_toolface_ode(inc0, azi0, toolface, dls, md, dense_output=False):
     """
@@ -378,46 +389,6 @@ def ode_rhs(s, y, dls, init_toolface_angle):
     return y_s
 
 
-def proj(u, v):
-    """
-    Project v on u
-    """
-    t = np.dot(v,u)
-    n = np.dot(u,u)
-
-    return t/n * u
-
-def l2norm(u):
-    """
-    Return l2norm of u
-    """
-    return np.dot(u, u) ** (0.5)
-
-def normalize(u):
-    """
-    Return unit vector in direction of u
-    """
-    norm_u = l2norm(u)
-    assert norm_u > 0
-
-    return u / norm_u
-
-def orthogonalize(u, v):
-    """
-    Orthogonalize v wrt. to u
-    """
-    return v - proj(u, v)
-
-def pos_from_state(state):
-    return state[0:3]
-
-def cart_bit_from_state(state):
-    inc = state[3]
-    azi = state[4]
-
-    return spherical_to_net(inc, azi)
-
-    
 def tfv_from_cart_direction_with_given_up(bit_n, bit_e, bit_t, toolface, up_n, up_e, up_t):
     """
     Calculate the toolface vector from bit direction and a given upwards direction
@@ -491,6 +462,7 @@ def tfv_from_cart_direction(bit_n, bit_e, bit_t, toolface):
 
         return tfv
 
+
 def toolface_from_tfv_and_bit(tfv_n, tfv_e, tfv_t, inc, azi):
     """
     Calculate toolface angle from toolface vector and bit direction.
@@ -525,53 +497,6 @@ def toolface_from_tfv_and_bit(tfv_n, tfv_e, tfv_t, inc, azi):
     return toolface
 
 
-def spherical_to_net(inc, azi):
-    """ 
-    Transform spherical orientation to unit vector of
-    (north, east, tvd)
-    """
-    tvd = np.cos(inc)
-    north = np.sin(inc)*np.cos(azi)
-    east = np.sin(inc)*np.sin(azi)
-
-    norm = (tvd**2 + north**2 + east**2) ** (0.5)
-
-    north = north / norm
-    east = east / norm
-    tvd = tvd / norm
-
-    return np.array((north, east, tvd))
-
-
-def net_to_spherical(north, east, tvd):
-    """
-    Transform orientation of a (north, east, tvd) direction
-    to (inc, azi)
-    """
-    r = (north**2 + east**2 + tvd**2) ** (0.5)
-    inc = np.arccos(tvd/r)
-    azi = np.arctan2(east, north)
-    if azi < 0:
-        azi = azi + 2*np.pi
-
-    return np.array((inc, azi))
-
-
-def get_params_from_states(from_state, to_state):
-    """
-    Given a from state and to state as (n, e, t, inc, azi),
-    find the toolface parameters (tf, dls, md) that connects them
-    or (None, None, np.inf) if it is not possible to connect
-    the states using the toolface dogleg method.
-
-    For the special case of a straight line, (-1, 0, md) is returned.
-    """
-
-    # TODO Replace with a call to get_params_from_state_and_net and
-    # check for final inc and azi
-
-    raise NotImplementedError
-    
 
 def get_params_from_state_and_net(from_state, to_net):
     """
@@ -582,6 +507,13 @@ def get_params_from_state_and_net(from_state, to_net):
     For the special case of a straight line ahead, (-1, 0, md) is returned.
 
     For the special case of a straight line behind, (-1, 0, np.inf) is returned.
+
+    Parameters:
+    from_state (array-like): Starting position and direction as (n, e, t, inc, azi)
+    to_net (array-like): End position as (n, e, t)
+
+    Returns:
+    array-like: (toolface angle, dog leg severity, md increment)
     """
 
     # TODO
@@ -611,7 +543,7 @@ def get_params_from_state_and_net(from_state, to_net):
     #  tfv will now be the null vector
 
     if l2norm(tfv) < 1e-6:
-        if np.dot(pos_diff, bit0) > 0.0:
+        if np.dot(pos_diff, bit0) >= 0.0:
             tf = -1
             dls = 0
             md = pos_diff_norm
@@ -667,32 +599,3 @@ def get_params_from_state_and_net(from_state, to_net):
         tf = tf + 2*np.pi
 
     return np.array([tf, dls, md])
-
-
-if __name__ == '__main__':
-
-    inc0 = np.pi * random()
-    azi0 = 2*np.pi * random()
-
-    n0 = -1000 + 2000*random()
-    e0 = -1000 + 2000*random()
-    t0 = -1000 + 2000*random()
-
-    from_state = np.array([n0, e0, t0, inc0, azi0])
-
-    tf0 = 2*np.pi * random()
-    dls = 0.0002
-    md = 1000 *random() + 100
-
-    to_state = dogleg_toolface(inc0, azi0, tf0, dls, md)
-
-    n1 = to_state[0] + n0
-    e1 = to_state[1] + e0
-    t1 = to_state[2] + t0
-
-    net = np.array([n1, e1, t1])
-
-    print(tf0, dls, md)
-
-    print(get_params_from_state_and_net(from_state, net))
-
