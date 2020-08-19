@@ -10,11 +10,13 @@ def proj(u, v):
 
     return t/n * u
 
+
 def l2norm(u):
     """
     Return l2norm of u
     """
     return np.dot(u, u) ** (0.5)
+
 
 def normalize(u):
     """
@@ -25,20 +27,12 @@ def normalize(u):
 
     return u / norm_u
 
+
 def orthogonalize(u, v):
     """
     Orthogonalize v wrt. to u
     """
     return v - proj(u, v)
-
-def pos_from_state(state):
-    return state[0:3]
-
-def cart_bit_from_state(state):
-    inc = state[3]
-    azi = state[4]
-
-    return spherical_to_net(inc, azi)
 
 
 def spherical_to_net(inc, azi):
@@ -88,3 +82,31 @@ def net_to_spherical(north, east, tvd):
         azi = azi + 2*np.pi
 
     return np.array((inc, azi))    
+
+
+def pos_from_state(state):
+    return state[0:3]
+
+
+def cart_bit_from_state(state):
+    inc = state[3]
+    azi = state[4]
+
+    return spherical_to_net(inc, azi)
+
+
+def translate_state(state, translation):
+    """
+    Translate a state by a translation vector
+    """
+
+    n = state[0] + translation[0]
+    e = state[1] + translation[1]
+    t = state[2] + translation[2]
+
+    inc = state[3]
+    azi = state[4]
+
+    new_state = np.array([n, e, t, inc, azi])
+
+    return new_state

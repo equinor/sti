@@ -1,130 +1,98 @@
 import csv
 import numpy as np
-from sti.sti_core import faststi, project_sti
+from sti.sti_core import find_sti, project_sti
 from datetime import datetime
 from random import random
 
 
-def create_training_data(n_straight_down, n_step_outs_v, n_step_outs_h, n_below_slot, n_fully_random):
-    """ Produce training data for fitting a neural net model."""
+def create_training_data(n_points):
+    """
+    Create training data and write to file
+
+    We sample with uniform input to spherical co-ordinates.
+    The idea is to get dense sampling in the most difficult
+    reigon to approximate, that is large change in angle
+    with small euclidian distance, which requires circle turns
+    and what not.
+    
+    Also, as this method will be used to calculate drillable
+    distances, we can expect most from - to problems to be
+    quite a lot less than 10000 meters appart.
+    
+    At last we exploit the symmetry of the problem as much as
+    possible by standardizing the input probem.
+    
+    First, we translate the problem so that the start
+    location is at 0
+    
+    Then we create a new co-ordinate system where the bit
+    start direction is (0,0,1) and the target position is
+    ortogonal to (0,1,0) by leting north be the orthogonal
+    residual of the target position to the tvd as defined by
+    the bit. East is then defined by their cross product
+    
+    Also, we flip the sign of east so that the target bit
+    azimuth is always in [0, pi]
+    
+    By doing so, we can sample only:
+    - Target position in north-tvd plane
+    - Target inclination in [0, pi]
+    - Target azimuth in [0, pi]
+    """
 
     filename = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = filename + ".csv"
-
-    MAX_ERR = 0.1
-
-    def print_header(text):
-        print("\n\n#################################################################")
-        print(text)
-        print("#################################################################") 
+    filename = "data/" + filename + ".csv"
     
     with open(filename,'x') as file:
         headers = __get_header()
         writer = csv.writer(file)
         writer.writerow(headers)
 
+    for i in range(0, n_points):
+        # By definition
+        start_state = np.array([0., 0., 0., 0., 0.])
 
-    for i in range(0,n_straight_down):
-        print_header("Straight down")
+        dls_limit = 0.0005 + 0.005*random() # From 0.85 to 9.45 degree / 30m 
 
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [0, 0, random()*2500, 0, 0]
+        radius_frac = random() * random()
+        radius = 10000 * radius_frac
+        pos_inc = np.pi * random()
+        pos_azi = 0.0#2*np.pi * random()
 
-        sti , err= faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("\nState mismatch: ", "{:.4f}".format(err))
+        north = radius * np.sin(pos_inc) * np.cos(pos_azi)
+        east = radius * np.sin(pos_inc) * np.sin(pos_azi)
+        tvd = radius * np.cos(pos_inc)
 
-        if err < MAX_ERR:
+
+        # In the standardized problem, east is selected so that 
+        # the target bit azi is always in [0, pi]
+        azi = 1*np.pi * random()
+        inc = np.pi * random()
+
+        scale_md = 4000
+
+        target_state = np.array([north, east, tvd, inc, azi])
+
+        sti, acceptable = find_sti(start_state, target_state, dls_limit, scale_md)
+
+        projected_state, dls_actual, md = project_sti(start_state, target_state, sti)
+
+        print("Start: ", start_state)
+        print("Target: ", target_state)
+        print("Projected: ", projected_state)
+        print("MD: ", md)
+        print("DLS Actual: ", dls_actual)
+        print("DLS Limit: ", dls_limit)
+
+        if acceptable:
+            print("Error below threshold. Storing data point.")
             data = __merge_training_data(start_state, target_state, dls_limit, sti)
             with open(filename,'a') as file:
                 writer = csv.writer(file)
                 writer.writerow(data)
+            # Store the datapoint
         else:
-            print("Error above threshold, will not store datapoint.")
-
-    for i in range(0, n_step_outs_v):
-        print_header("Step out to vertical")
-
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [-750 + random()*1500, -750 + random()*1500, 2000+random()*2000, 0, 0]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        if err < MAX_ERR:
-            data = __merge_training_data(start_state, target_state, dls_limit, sti)
-            with open(filename,'a') as file:
-                writer = csv.writer(file)
-                writer.writerow(data)
-        else:
-            print("Error above threshold, will not store datapoint.")
-
-    for i in range(0, n_step_outs_h):
-        print_header("Step out to horizontal")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-
-        north = -2000+random()*4000
-        east = -2000+random()*4000
-        tvd = 2000+random()*2000
-
-        azi = np.arctan2(east, north)
-        if azi < 0:
-            azi = azi + 2*np.pi
-
-        target_state = [north, east, tvd, np.pi/2, azi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        if err < MAX_ERR:
-            data = __merge_training_data(start_state, target_state, dls_limit, sti)
-            with open(filename,'a') as file:
-                writer = csv.writer(file)
-                writer.writerow(data)
-        else:
-            print("Error above threshold, will not store datapoint.")
-
-    for i in range(0, n_below_slot):
-        print_header("Horizontal below KO")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, 0, 0]
-        target_state = [0, 0, 2000+random()*2000, np.pi/2, random()*2*np.pi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        if err < MAX_ERR:
-            data = __merge_training_data(start_state, target_state, dls_limit, sti)
-            with open(filename,'a') as file:
-                writer = csv.writer(file)
-                writer.writerow(data)
-        else:
-            print("Error above threshold, will not store datapoint.")
-    
-    for i in range(0, n_fully_random):
-        print_header("Fully random - but KO at (0,0,0)")
-        dls_limit = random()*0.003 + 0.0015
-        start_state = [0, 0, 0, random()*np.pi, random()*2*np.pi]
-        target_state = [-4000+random()*8000, -4000+random()*8000, -4000+random()*8000, random()*np.pi/2, random()*2*np.pi]
-
-        sti, err = faststi(start_state, target_state, dls_limit=dls_limit)
-        print_sti(start_state, target_state, sti, dls_limit)
-        print("State mismatch:", err)
-
-        if err < MAX_ERR:
-            data = __merge_training_data(start_state, target_state, dls_limit, sti)
-            with open(filename,'a') as file:
-                writer = csv.writer(file)
-                writer.writerow(data)
-        else:
-            print("Error above threshold, will not store datapoint.")
-
+            print("Error above threshold. Will not store data point.")
 
 def __merge_training_data(start_state, target_state, dls_limit, sti):
     data = []
@@ -148,15 +116,12 @@ def __get_header():
               "target_inc",
               "target_azi",
               "dls_limit",
-              "inc1",
-              "inc2",
-              "inc3",
-              "azi1",
-              "azi2",
-              "azi3",
-              "md_inc1",
-              "md_inc2",
-              "md_inc3",
+              "n0",
+              "e0",
+              "t0",
+              "n1",
+              "e1",
+              "t1",
     ]
 
     return header
@@ -173,44 +138,6 @@ def __merge_info(start_state, target_state, dls_limit, sti):
 
     return merged
 
-def print_state(state):
-    print("North: ", "{:.2f}".format(state[0]))
-    print("East : ", "{:.2f}".format(state[1]))
-    print("TVD  : ", "{:.2f}".format(state[2]))
-    print("Inc. : ", "{:.4f}".format(state[3]))
-    print("Azi. : ", "{:.4f}".format(state[4]))
-
-
-def print_sti(start_state, target_state, sti, dls_limit):
-    print("Start state: ")
-    print("----------------")
-    print_state(start_state)
-
-    print("\nTarget state:")
-    print("----------------")
-    print_state(target_state)
-
-    projected_state, dls = project_sti(start_state, sti)
-    print("\nProjected state:")
-    print("----------------")
-    print_state(projected_state)
-
-    tot_md = sti[6] + sti[7] + sti[8]
-    print("\nMD start-target: ", "{:.2f}".format(tot_md))
-    print("DLS limit: ", "{:.5f}".format(dls_limit))
-
-    print("\nLegs:")
-    print("----------------")
-    print("Leg 1, toolface: ", "{:.4f}".format(sti[0]), " dls: ", "{:.4f}".format(sti[3]), " md_inc: ", "{:.2f}".format(sti[6]), "dls:", "{:.5f}".format(dls[0]))
-    print("Leg 2, toolface: ", "{:.4f}".format(sti[1]), " dls: ", "{:.4f}".format(sti[4]), " md_inc: ", "{:.2f}".format(sti[7]), "dls:", "{:.5f}".format(dls[1]))
-    print("Leg 3, toolface: ", "{:.4f}".format(sti[2]), " dls: ", "{:.4f}".format(sti[5]), " md_inc: ", "{:.2f}".format(sti[8]), "dls:", "{:.5f}".format(dls[2]))
-    print("--------------------------------------------------------------\n")
-
 
 if __name__ == '__main__':
-    start_time = datetime.now()
-    create_training_data(0, 15, 15, 15, 15)
-    end_time = datetime.now()
-    delta = end_time - start_time
-    print("Elapsed walltime:")
-    print(delta)
+    create_training_data(1000)

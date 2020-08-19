@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
-from sti.dogleg_tf import dogleg_toolface, dogleg_toolface_ode, spherical_to_net, net_to_spherical , get_params_from_state_and_net
+from sti.dogleg_tf import dogleg_toolface, dogleg_toolface_ode, get_params_from_state_and_net
+from sti.utils import spherical_to_net, net_to_spherical
 from random import random
 
 class TestDoglegToolface():
