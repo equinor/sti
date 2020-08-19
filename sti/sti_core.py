@@ -4,6 +4,13 @@ from sti.dogleg_tf import dogleg_toolface, get_params_from_state_and_net
 from sti.utils import pos_from_state, cart_bit_from_state, translate_state, proj, orthogonalize, l2norm,\
                          normalize, net_to_spherical
 
+# Model loading
+import pickle
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPRegressor
+
+# QC & Demo
 from random import random
 
 def find_sti(start_state, target_state, dls_limit, scale_md):
@@ -18,9 +25,10 @@ def find_sti(start_state, target_state, dls_limit, scale_md):
     """
     # Standardize problem
     start_stand, target_stand = standardize_problem(start_state, target_state)
+    x0 = standardized_initial_guess(start_stand, target_stand, dls_limit)
 
     # Solve in standard space
-    stand_sti, acceptable = find_sti_opti(start_stand, target_stand, dls_limit, scale_md)
+    stand_sti, acceptable = find_sti_opti(start_stand, target_stand, dls_limit, scale_md, x0)
 
     int_pos_0_stand = stand_sti[0:3]
     int_pos_1_stand = stand_sti[3:6]
@@ -34,7 +42,7 @@ def find_sti(start_state, target_state, dls_limit, scale_md):
     return sti, acceptable
 
 
-def find_sti_opti(start_state, target_state, dls_limit, scale_md):
+def find_sti_opti(start_state, target_state, dls_limit, scale_md, initial_guess):
     """ 
     Fit a sti from start_state to target_state using optimization
     
@@ -49,7 +57,6 @@ def find_sti_opti(start_state, target_state, dls_limit, scale_md):
 
     acceptable_solution = False
 
-    x0 = initial_guess(start_state, target_state, dls_limit)
     lb, ub = get_bounds(start_state, target_state)
     bounds = Bounds(lb, ub)
 
@@ -58,7 +65,7 @@ def find_sti_opti(start_state, target_state, dls_limit, scale_md):
     if VERBOSE:
         print("Performing gradient based optimization.")
 
-    result = minimize(objective_function, x0, bounds=bounds, method=METHOD)#, options={'iprint': 99})
+    result = minimize(objective_function, initial_guess, bounds=bounds, method=METHOD)#, options={'iprint': 99})
     sti = result.x
 
     md, dls_mis, inc_err, azi_err = get_error_estimates(start_state, target_state, dls_limit, scale_md, sti)
@@ -193,6 +200,21 @@ def initial_guess(start_state, target_state, dls_limit):
     intermed1 = np.array([n0 + 2*dn/3, e0 + 2*de/3, t0 + 2*dt/3])
 
     sti = np.append(intermed0, intermed1).flatten()
+
+    return sti
+
+def standardized_initial_guess(start_state, target_state, dls_limit):
+    # Use a model to get an initial gues for a standardized problem
+
+    with open('models/mlp.sav', 'rb') as file:
+        model = pickle.load(file)
+
+    x = np.append(start_state, target_state).flatten()
+    x = np.append(x, dls_limit).flatten()
+
+    print("Using saved model for intial estimate.")
+
+    sti = model.predict(x.reshape(1, -1))
 
     return sti
 
