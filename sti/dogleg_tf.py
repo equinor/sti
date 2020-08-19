@@ -76,12 +76,6 @@ def dogleg_toolface(inc0, azi0, toolface, dls, md):
 
     state = np.array(state)
 
-    from_state = np.array([0.,0.,0., inc0, azi0])
-
-    tf_calc = get_toolface_from_states(from_state, state)
-    print("TF given: ", toolface)
-    print("TF calc: ", tf_calc)
-
     return state
 
 
