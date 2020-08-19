@@ -9,15 +9,15 @@ import sti.sti_core
 import pickle
 
 # Data from optimization
-filename_data ='data.csv'
+filename_data ='data/merged/data.csv'
 
 # Store the final model here for use later
-filename_model = 'models/linear-mod.sav'
+filename_model = 'models/linear.sav'
 
 df = pd.read_csv(filename_data)
 
 #Y: dependent variable vector
-X = df.iloc[:, 0:10].values
+X = df.iloc[:, 0:11].values
 y = df.iloc[:,11:].values
 
 # Create training and test sets
