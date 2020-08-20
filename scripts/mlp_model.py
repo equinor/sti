@@ -26,15 +26,14 @@ y = df.iloc[:,11:].values
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state=42)
 
 
-# network = (64, 96, 128, 128, 96, 64, 32)
-
 # Network
-depth = 5
-width = depth * 10
-condensation = int(width / 2)
+# Depth-width relationship based on https://arxiv.org/abs/2001.07523
+depth = 3
+width = depth * 8 
+condensation0 = int(width / 2)
 
 network = [width] * depth
-network.append(condensation)
+network.append(condensation0)
 
 print("MLP hidden arch:", network)
 
