@@ -63,6 +63,13 @@ def find_sti_opti(start_state, target_state, dls_limit, scale_md, initial_guess)
     objective_function = get_objective_function(start_state, target_state,dls_limit, scale_md)
 
     if VERBOSE:
+        md, dls_mis, inc_err, azi_err = get_error_estimates(start_state, target_state, dls_limit, scale_md, initial_guess)
+        inc_mis = inc_err ** (0.5)
+        azi_mis = azi_err ** (0.5)
+        print("Errors in initial guess. dls_mis: ", dls_mis, " inc_mis: ", inc_mis, " azi_mis: ", azi_mis)
+
+
+    if VERBOSE:
         print("Performing gradient based optimization.")
 
     result = minimize(objective_function, initial_guess, bounds=bounds, method=METHOD)#, options={'iprint': 99})
@@ -123,7 +130,12 @@ def get_error_estimates(start_state, target_state, dls_limit, scale_md, sti):
     projected_state, dls, md = project_sti(start_state, target_state, sti)
 
     inc_err = (target_state[3] - projected_state[3])**2
-    azi_err = (target_state[4] - projected_state[4])**2
+
+    azi_err = abs(target_state[4] - projected_state[4])
+    if azi_err > 2*np.pi:
+        azi_err = azi_err - 2*np.pi
+
+    azi_err = azi_err ** 2
 
     dls_mis = max(0, dls - dls_limit)
 
@@ -209,12 +221,14 @@ def standardized_initial_guess(start_state, target_state, dls_limit):
     with open('models/mlp.sav', 'rb') as file:
         model = pickle.load(file)
 
-    x = np.append(start_state, target_state).flatten()
+    # We're using standardized problem, start state is 0
+    x = start_state
     x = np.append(x, dls_limit).flatten()
 
     print("Using saved model for intial estimate.")
 
     sti = model.predict(x.reshape(1, -1))
+    sti = sti.flatten()
 
     return sti
 

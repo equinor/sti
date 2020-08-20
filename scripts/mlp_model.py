@@ -16,23 +16,38 @@ filename_model = 'models/mlp.sav'
 
 df = pd.read_csv(filename_data)
 
-#Y: dependent variable vector
-X = df.iloc[:, 0:11].values
+# Using standardized problem, so start state is 0
+X = df.iloc[:, 5:11].values
+
+# Intermediate points we'd like to predict
 y = df.iloc[:,11:].values
 
 # Create training and test sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state=42)
 
 
-# MLP Pipeline
-network = (128, 128, 96, 64, 32)
-epochs = 900 #Hack
+# network = (64, 96, 128, 128, 96, 64, 32)
+
+# Network
+depth = 5
+width = depth * 10
+condensation = int(width / 2)
+
+network = [width] * depth
+network.append(condensation)
+
+print("MLP hidden arch:", network)
+
+# Training epohcs
+epochs = 1800
+
+# Pipeline definition inc. scaling
 model = Pipeline([
              ('scaler', StandardScaler()),
              ('mlp', MLPRegressor(hidden_layer_sizes=network, max_iter=epochs))
              ])
 
-# Fit the regressor to the training data
+# Fit the model to the training data
 model.fit(X_train, y_train)
 
 # Predict on the test data: y_pred
@@ -42,23 +57,6 @@ y_pred = model.predict(X_test)
 print("R^2: {}".format(model.score(X_test, y_test)))
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("Root Mean Squared Error: {}".format(rmse))
-
-# # Compare some predictions
-# tests = range(1, 2500,5)
-
-# for i in tests:
-#     from_state = np.array(df.iloc[i, 0:5])
-#     to_state = np.array(df.iloc[i, 5:10])
-#     sti = np.array(df.iloc[i, 11:])
-#     dls = np.array(df.iloc[i,11])
-
-#     sti_pred = model.predict(X[i,:].reshape(1, -1)).flatten()
-
-#     print("Actual")
-#     faststi.print_sti(from_state, to_state, sti, dls)
-
-#     print("\nFrom regression")
-#     faststi.print_sti(from_state, to_state, sti_pred, dls)
 
 # Store the model
 with open(filename_model, 'wb') as file:
