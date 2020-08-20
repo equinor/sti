@@ -13,6 +13,7 @@ from sklearn.neural_network import MLPRegressor
 # QC & Demo
 from random import random
 
+
 def find_sti(start_state, target_state, dls_limit, scale_md):
     """
     Find a sti from start to target within dls limitation.
@@ -132,8 +133,10 @@ def get_error_estimates(start_state, target_state, dls_limit, scale_md, sti):
     inc_err = (target_state[3] - projected_state[3])**2
 
     azi_err = abs(target_state[4] - projected_state[4])
-    if azi_err > 2*np.pi:
-        azi_err = azi_err - 2*np.pi
+
+    # Periodic error in azi
+    if azi_err > np.pi:
+        azi_err = abs(azi_err - 2*np.pi)
 
     azi_err = azi_err ** 2
 
@@ -218,11 +221,14 @@ def initial_guess(start_state, target_state, dls_limit):
 def standardized_initial_guess(start_state, target_state, dls_limit):
     # Use a model to get an initial gues for a standardized problem
 
+    # NOTE - This function assumes, but does NOT check for standardized
+    # problem formulation
+
     with open('models/mlp.sav', 'rb') as file:
         model = pickle.load(file)
 
     # We're using standardized problem, start state is 0
-    x = start_state
+    x = target_state
     x = np.append(x, dls_limit).flatten()
 
     print("Using saved model for intial estimate.")
