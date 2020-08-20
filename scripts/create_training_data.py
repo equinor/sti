@@ -1,6 +1,6 @@
 import csv
 import numpy as np
-from sti.sti_core import find_sti, project_sti
+from sti.sti_core import find_sti, project_sti, standardize_problem, inverse_standardization_pos, standardized_initial_guess
 from datetime import datetime
 from random import random
 
@@ -80,7 +80,23 @@ def create_training_data(n_points):
         print("Start: ", start_state)
         print("Target: ", target_state)
         print("Projected: ", projected_state)
+
+        # See where the model would take us
+        start_stand, target_stand = standardize_problem(start_state, target_state)
+        stand_sti = standardized_initial_guess(start_stand, target_stand, dls_limit)
+
+        int_pos_0_stand = stand_sti[0:3]
+        int_pos_1_stand = stand_sti[3:6]
+
+        # Translate sti points back to physical space
+        int_pos_0 = inverse_standardization_pos(start_state, target_state, int_pos_0_stand)
+        int_pos_1 = inverse_standardization_pos(start_state, target_state, int_pos_1_stand)
+
+        sti_pred = np.append(int_pos_0, int_pos_1).flatten()
+        projected_pred, _ , md_pred = project_sti(start_state, target_state, sti_pred)
+        print("Proj. mod.", projected_pred)
         print("MD: ", md)
+        print("Md mod: ", md_pred)
         print("DLS Actual: ", dls_actual)
         print("DLS Limit: ", dls_limit)
 
