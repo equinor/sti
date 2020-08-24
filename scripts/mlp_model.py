@@ -3,16 +3,16 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, PolynomialFeatures
 from sklearn.neural_network import MLPRegressor
 import sti.sti_core
 import pickle
 
 # Data from optimization
-filename_data ='data/merged/data.csv'
+filename_data ='data/merged/data_boost.csv'
 
 # Store the final model here for use later
-filename_model = 'models/mlp.sav'
+filename_model = 'models/mlp-boost'
 
 df = pd.read_csv(filename_data)
 
@@ -28,36 +28,48 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, rando
 
 # Network
 # Depth-width relationship based on https://arxiv.org/abs/2001.07523
-depth = 3
-width = depth * 8 
-condensation0 = int(width / 2)
 
-network = [width] * depth
-network.append(condensation0)
+# So far best model trained with 1000 epohcs
+# MLP depth:  6
+# MLP hidden arch: [48, 48, 48, 48, 48, 48, 24]
+# R^2: 0.574738439348979
+# Root Mean Squared Error: 452.36801092920155
+for i in range(6, 9):
+    depth = i
+    width = depth * 8
+    condensation0 = int(width / 2)
 
-print("MLP hidden arch:", network)
+    network = [width] * depth
+    network.append(condensation0)
 
-# Training epohcs
-epochs = 1800
+    print("MLP depth: ", depth)
+    print("MLP hidden arch:", network)
 
-# Pipeline definition inc. scaling
-model = Pipeline([
-             ('scaler', StandardScaler()),
-             ('mlp', MLPRegressor(hidden_layer_sizes=network, max_iter=epochs))
-             ])
+    # Training epohcs
+    epochs = 1000
 
-# Fit the model to the training data
-model.fit(X_train, y_train)
+    # Pipeline definition inc. scaling
+    model = Pipeline([
+                 # ('scaler', StandardScaler()),
+                 ('scaler', MinMaxScaler((-1,1))),
+                 # ('poly', PolynomialFeatures(degree=2)),
+                 ('mlp', MLPRegressor(hidden_layer_sizes=network, max_iter=epochs, verbose=True))
+                 ])
 
-# Predict on the test data: y_pred
-y_pred = model.predict(X_test)
+    # Fit the model to the training data
+    model.fit(X_train, y_train)
 
-# Compute and print R^2 and RMSE
-print("R^2: {}".format(model.score(X_test, y_test)))
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-print("Root Mean Squared Error: {}".format(rmse))
+    # Predict on the test data: y_pred
+    y_pred = model.predict(X_test)
 
-# Store the model
-with open(filename_model, 'wb') as file:
-    pickle.dump(model, file)
+    # Compute and print R^2 and RMSE
+    print("R^2: {}".format(model.score(X_test, y_test)))
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    print("Root Mean Squared Error: {}".format(rmse))
+
+    filename_this_model = filename_model + str(depth) + ".sav"
+
+    # Store the model
+    with open(filename_this_model, 'wb') as file:
+        pickle.dump(model, file)
 
