@@ -7,7 +7,7 @@ from sti.utils import pos_from_state, cart_bit_from_state, translate_state, proj
 # Model loading
 import pickle
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.neural_network import MLPRegressor
 
 # QC & Demo
@@ -367,6 +367,11 @@ def get_stand_rotation_matrix(start_state, target_state):
 
 
 def inverse_standardization_pos(start_state, target_state, pos):
+    """
+    Take a (n, e, t) point in the standard space defined
+    by start and target and transform back to the physical
+    space
+    """
     trans = get_stand_translation_vector(start_state)
     A = get_stand_rotation_matrix(start_state, target_state)
 
@@ -376,7 +381,29 @@ def inverse_standardization_pos(start_state, target_state, pos):
     return pos_inverse
 
 
+def standardize_pos(start_state, target_state, pos):
+    """
+    Take a (n, e, t) position and transform to
+    system defined by standardization of 
+    start and target states.
+    """
+
+    trans = get_stand_translation_vector(start_state)
+    
+    start, target = translate_problem(start_state, target_state)
+    A = get_stand_rotation_matrix(start, target)
+
+    stand_pos = pos + trans
+    stand_pos = np.dot(A, stand_pos)
+
+    return stand_pos
+
+
+
 def standardize_problem(start_state, target_state):
+    """
+    Standardize a problem
+    """
     
     start, target = translate_problem(start_state, target_state)
 
