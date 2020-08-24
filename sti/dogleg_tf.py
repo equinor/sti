@@ -522,7 +522,7 @@ def get_params_from_state_and_net(from_state, to_net):
     
     bit0 = cart_bit_from_state(from_state)
 
-    pos_diff = pos1 - pos0
+    pos_diff = np.subtract(pos1, pos0)
     pos_diff_norm = l2norm(pos_diff)
 
     cos_theta = np.dot(bit0, pos_diff) / pos_diff_norm
