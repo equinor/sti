@@ -29,12 +29,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, rando
 # Network
 # Depth-width relationship based on https://arxiv.org/abs/2001.07523
 
-# So far best model trained with 1000 epohcs
-# MLP depth:  6
-# MLP hidden arch: [48, 48, 48, 48, 48, 48, 24]
-# R^2: 0.574738439348979
-# Root Mean Squared Error: 452.36801092920155
-for i in range(6, 9):
+# Estimate a range of archs.
+for i in range(4, 10):
     depth = i
     width = depth * 8
     condensation0 = int(width / 2)
@@ -72,4 +68,3 @@ for i in range(6, 9):
     # Store the model
     with open(filename_this_model, 'wb') as file:
         pickle.dump(model, file)
-
