@@ -7,23 +7,40 @@ from sti.utils import pos_from_state, cart_bit_from_state, translate_state, proj
 # Model loading
 import pickle
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.neural_network import MLPRegressor
 
 # QC & Demo
 from random import random
 
 
-def find_sti(start_state, target_state, dls_limit, scale_md):
+def find_sti(start_state, target_state, dls_limit, scale_md=4000):
     """
     Find a sti from start to target within dls limitation.
 
     Scale md: Float in the order of magnitude of md in the problem.
 
-    Standardize the problem and use optimization.
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
+    scale_md : float
+        positive float used to scale md to ~1 in the objective function
 
-    TODO Refactor so that initial guess is passed to optimization.
+
+    Returns
+    -------
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+    acceptable : bool
+        False if the solution is outside acceptable bounds,
     """
+
     # Standardize problem
     start_stand, target_stand = standardize_problem(start_state, target_state)
     x0 = standardized_initial_guess(start_stand, target_stand, dls_limit)
@@ -46,13 +63,36 @@ def find_sti(start_state, target_state, dls_limit, scale_md):
 def find_sti_opti(start_state, target_state, dls_limit, scale_md, initial_guess):
     """ 
     Fit a sti from start_state to target_state using optimization
-    
-    TODO Refactor so that initial guess is passed as an argument
+
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
+    scale_md : float
+        positive float used to scale md to ~1 in the objective function
+    initial_guess : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+
+
+    Returns
+    -------
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+    acceptable : bool
+        False if the solution is outside acceptable bounds,
      """
 
     VERBOSE = True
     METHOD = 'L-BFGS-B'
-    DLS_EPS = 1e-2 # Proceed to global optimiziation if overriding dls limit this much
+
+    DLS_EPS = 1e-4 # Proceed to global opt. if dls is overshooting (1e-4 ~0.2 degree/30m)
     INC_EPS = 1e-1 # Prooced to global opt. if azi error is larger (0.1 ~ 5 degrees)
     AZI_EPS = 1e-1 # Prooced to global opt. if inc error is larger (0.1 ~ 5 degrees)
 
@@ -107,8 +147,47 @@ def find_sti_opti(start_state, target_state, dls_limit, scale_md, initial_guess)
 
 
 def get_objective_function(start_state, target_state, dls_limit, scale_md):
+    """
+    Create a problem specific objective function.
+
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
+    scale_md : float
+        positive float used to scale md to ~1 in the objective function
+
+
+    Returns
+    -------
+    objective_function : function
+    """
+
 
     def objective_function(sti):
+        """
+        Problem specific objective function
+
+
+        Parameters
+        ----------
+        sti : nd.array
+            two intermediate cartesian positions layed out as 
+            (n0, e0, t0, n1, e1, t1)
+
+
+        Returns
+        ------
+        of_val: float
+            objective function value
+        """
+
+
         WEIGHT_DLS = 1000
         WEIGHT_INC = 10000
         WEIGHT_AZI = 10000
@@ -127,6 +206,36 @@ def get_objective_function(start_state, target_state, dls_limit, scale_md):
 
 
 def get_error_estimates(start_state, target_state, dls_limit, scale_md, sti):
+    """
+    Error estimates
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
+    scale_md : float
+        positive float used to scale md to ~1 in the objective function
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+
+
+    Returns
+    -------
+    md : float
+        measured depth from start to target along sti
+    dls_mis : float
+        positive number if dls is overshooting its limit
+    inc_err: float
+        squared error in projected inclination vs objective
+    azi_err: float
+        squared error in projected azimuth vs objective
+    """
+
 
     projected_state, dls, md = project_sti(start_state, target_state, sti)
 
@@ -146,6 +255,31 @@ def get_error_estimates(start_state, target_state, dls_limit, scale_md, sti):
 
 
 def project_sti(start_state, target_state, sti):
+    """
+    Project a sti from start to target resulting
+    in a well trajectory
+
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+
+
+    Returns
+    -------
+    projected_state : nd.array
+        (north, east, tvd, inc, azi) at end of trajectory
+    max_dls : float
+        maximum dog leg severity of trajectory
+    md : float
+        measured depth  from start to target along trajectory
+    """
 
     # HACK Just thorwing something on the wall here to see if the 
     # new approach using intermediate points is better
@@ -192,6 +326,27 @@ def project_sti(start_state, target_state, sti):
 
 
 def get_bounds(start_state, target_state):
+    """
+    Lower and upper bounds for optimization
+    algorithm.
+
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+
+
+    Returns
+    -------
+    lb : nd.array
+        lower bounds for optimization, shape (6,)
+    ub : nd.array
+        upper bounds for optimization, shape (6,)
+    """
+
     # HACK Just throwing in some temporary stuff. But seems to work fine,
     # and performance is not super senstive (tried with stricter bounds)
     lb = np.array([-1.0e4]*6)
@@ -201,6 +356,28 @@ def get_bounds(start_state, target_state):
 
 
 def initial_guess(start_state, target_state, dls_limit):
+    """
+    Dummy initial guess for optimization
+
+    Used to bootstrap samples for the ML model
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
+
+
+    Returns
+    -------
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+
+    """
     # Dummy approach, just put two points betweeen start and end
 
     dn = target_state[0] - start_state[0]
@@ -219,19 +396,38 @@ def initial_guess(start_state, target_state, dls_limit):
     return sti
 
 def standardized_initial_guess(start_state, target_state, dls_limit):
-    # Use a model to get an initial gues for a standardized problem
+    """
+    Machine learning based initial guess for optimization
 
-    # NOTE - This function assumes, but does NOT check for standardized
-    # problem formulation
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
 
+
+    Returns
+    -------
+    sti : nd.array
+        two intermediate cartesian positions layed out as 
+        (n0, e0, t0, n1, e1, t1)
+    
+    Notes
+    -----
+    NOTE - This function assumes, but does NOT check for standardized
+    problem formulation
+    """
+
+    # TODO Keep me in memory!
     with open('models/mlp.sav', 'rb') as file:
         model = pickle.load(file)
 
     # We're using standardized problem, start state is 0
     x = target_state
     x = np.append(x, dls_limit).flatten()
-
-    print("Using saved model for intial estimate.")
 
     sti = model.predict(x.reshape(1, -1))
     sti = sti.flatten()
@@ -241,26 +437,28 @@ def standardized_initial_guess(start_state, target_state, dls_limit):
 
 def approximate_distance(start_state, target_state, dls_limit):
     """
-    Approximate distance, to be used as a regualizer for
-    global optimization, which can sometimes produce strange results.
+    Approximate distance, used with a multiplier for regularization
+    of global optimization, which can sometimes produce strange results.
 
-    Can probably be improved in many ways, the point is only to get
-    in the correct order of magnitude.
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    dls_limit : float
+        maximum dog leg severity alllowed
 
-    Initial idea:
+    Returns
+    -------
+    dist: float
+        approximate measured depth from start to target
 
-    Caluclate:
-    1. Required turn length
-    2. Euclidian distance
 
-    The difficult stuff is to find out when to add ~pi to the 
-    required turn length, e.g. when very close. A simple solution
-    is to simply not use this term in the regularizer before md > 4~5 * app_dist
-
-    Updated idea:
-    
-    Bootstrap. Train a linear model or network to estimate distance and use this.
-
+    Notes
+    -----
+    This is not a good approximate, should only be used for 
+    regularization purposes, with a large (4 ~ 5) multiplier.
     """
 
     # We dont bother with exact arc angle here
@@ -285,15 +483,28 @@ def approximate_distance(start_state, target_state, dls_limit):
 
     euc_dist = (dn**2 + de**2 + dt**2) ** (0.5)
 
-    return euc_dist + delta_angle / dls_limit
-    
+    dist = euc_dist + delta_angle / dls_limit
+
+    return dist 
+
 
 def get_stand_translation_vector(start_state):
     """
     Returns a translation vector for use in standardizing
-    the problem
+    the problem.
 
-    Use additative when standardizing, subtract when inverse.
+    Use additatiove when standardizing, subtract when inverse.
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+
+    Returns
+    -------
+    vec: nd.array
+        (north, east, tvd) translation
+
     """
     n = start_state[0]
     e = start_state[1]
@@ -305,6 +516,25 @@ def get_stand_translation_vector(start_state):
 
 
 def translate_problem(start_state, target_state):
+    """
+    Translate a problem so that start_state position
+    is at (0, 0, 0). Note that orientation is preserved.
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+
+    Returns 
+    -------
+    new_start : nd.array
+        (north, east, tvd, inc, azi) of translated start
+    new_target : nd.array
+        (north, east, tvd, inc, azi) of translated target
+    """
+
     vec = get_stand_translation_vector(start_state)
 
     new_start = translate_state(start_state, vec)
@@ -319,6 +549,28 @@ def get_stand_rotation_matrix(start_state, target_state):
 
     Use as multplication for standardizing, matrix inverse
     to go back
+
+    The rotation is calculated after translating the
+    problem so that start location is at (0,0,0)
+
+    The rotation is defined such that:
+        - Start direction is with incliation and azimuth
+          0, i.e. straight down.
+        - The target east is co-ordinate is always zero
+        - The target azimuth is always in [0 ,pi], i.e.
+          pointing eastwards
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+
+    Returns 
+    -------
+    A : nd.array
+        (3 x 3) orothoganal rotation matrix
     """
 
     start, target = translate_problem(start_state, target_state)
@@ -371,6 +623,20 @@ def inverse_standardization_pos(start_state, target_state, pos):
     Take a (n, e, t) point in the standard space defined
     by start and target and transform back to the physical
     space
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    pos : nd.array
+        (north, east, tvd) position in standard space
+
+    Returns
+    -------
+    pos_inverse : nd.array
+        (north, east, tvd) position in physical space
     """
     trans = get_stand_translation_vector(start_state)
     A = get_stand_rotation_matrix(start_state, target_state)
@@ -386,6 +652,20 @@ def standardize_pos(start_state, target_state, pos):
     Take a (n, e, t) position and transform to
     system defined by standardization of 
     start and target states.
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+    pos : nd.array
+        (north, east, tvd) position in physical space
+
+    Returns
+    -------
+    pos_inverse : nd.array
+        (north, east, tvd) position in standardized space
     """
 
     trans = get_stand_translation_vector(start_state)
@@ -402,7 +682,28 @@ def standardize_pos(start_state, target_state, pos):
 
 def standardize_problem(start_state, target_state):
     """
-    Standardize a problem
+    Take a start and target state and transform
+    to standardized space, i.e.:
+
+        - Start location at (0,0,0)
+        - Start inc & azi at (0,0)
+        - Target east co-ordinate at 0
+        - Target north co-ordinate always positive
+        - Target azimuth in [0, pi]
+
+    Parameters
+    ----------
+    start_state : nd.array
+        (north, east, tvd, inc, azi) of start state
+    target_state : nd.array
+        (north, east, tvd, inc, azi) of target state
+
+    Returns 
+    -------
+    standard_start : nd.array
+        (north, east, tvd, inc, azi) of standardized start
+    standard_target : nd.array
+        (north, east, tvd, inc, azi) of standardized targret
     """
     
     start, target = translate_problem(start_state, target_state)
@@ -439,6 +740,7 @@ def standardize_problem(start_state, target_state):
     return standard_start, standard_target
 
 
+# TODO Move to tests
 def demo_standardization():
     for i in range(0, 100):
 
