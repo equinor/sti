@@ -48,7 +48,15 @@ The training data can be boosted by inverting the problem so that start and targ
 ## Training a neural network model
 
 * See [`scripts/mlp_model.py`](scripts/mlp_model.py) for a preliminary training pipeline.
-* Sample data available in [`data/merged`](data/merged), currently about 0.6 million solved problems are available for model fitting.
+* Sample data available in [`data/merged`](data/merged), currently about 1 million solved problems are available for model fitting.
+* A holdout dataset for model evaluation is also available in the same folder.
+
+## Results
+Shown below is a MLP with 7 hidden layers trained on 1 million data points, agumented with reversed training data. 
+
+The model achives an R^2 of 0.75 and a MSE of 268 on the training data (not corrected for non-i.i.d). Below the model is scored on the holdout dataset (i.i.d).
+
+![Residuals](docs/histogram_mlp.png)
 
 ## API
 The code base is currently at an experimental stage - thus no API is provided. No stability of method names and signatures should be assumed.
