@@ -39,12 +39,16 @@ To produce data training data for a deep neural network, the local planning prob
 
 To speed up the process, a preliminary neural net is used as an initial guess for the optimization algorithm.
 
+See [`scripts/create_training_data.py`](scripts/create_training_data.py) for a draft procedure for producing training data.
+
 The training data can be boosted by inverting the problem so that start and target are flipped. Note that their directions must also be changed. See [`scripts/reverse_training_data.py`](scripts/reverse_training_data.py) for a preliminary sketch. 
 
 ***Note:*** The data is no longer [i.i.d](https://en.wikipedia.org/wiki/Independent_and_identically_distributed_random_variables) when using this approach. Hence, special care should be taken when testing models trained on boosted data. This is not implemented in the preliminary pipeline.
 
 ## Training a neural network model
-See [`scripts/mlp_model.py`](scripts/mlp_model.py) for a preliminary training pipeline. Sample data available in [`data/merged`](data/merged).
+
+* See [`scripts/mlp_model.py`](scripts/mlp_model.py) for a preliminary training pipeline.
+* Sample data available in [`data/merged`](data/merged), currently about 0.6 million solved problems are available for model fitting.
 
 ## API
 The code base is currently at an experimental stage - thus no API is provided. No stability of method names and signatures should be assumed.
