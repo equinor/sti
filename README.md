@@ -48,7 +48,7 @@ The training data can be boosted by inverting the problem so that start and targ
 ## Training a neural network model
 
 * See [`scripts/mlp_model.py`](scripts/mlp_model.py) for a preliminary training pipeline.
-* Sample data available in [`data/merged`](data/merged), currently about 4 million solved problems are available for model fitting.
+* Sample data available in [`data/merged`](data/merged), currently about 8 million solved problems are available for model fitting.
 * A holdout dataset for model evaluation is also available in the same folder.
 
 ## Results
