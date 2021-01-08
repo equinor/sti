@@ -56,6 +56,8 @@ Shown below is a MLP with 7 hidden layers trained on 1 million data points, agum
 
 The model achives an R^2 of 0.75 and a MSE of 268 on the training data (not corrected for non-i.i.d). Below the model is scored on the holdout dataset (i.i.d).
 
+Edit: Some later attempts with more data and deeper networks pushed the R^2 to about 0.9.
+
 ![Residuals](docs/histogram_mlp.png)
 
 ## API
